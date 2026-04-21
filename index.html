@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>車輛藍芽控制介面</title>
+  <style>
+    :root {
+      --bg:    #0f1923;
+      --card:  #1a2535;
+      --card2: #1e2d40;
+      --teal:  #00bfa5;
+      --red:   #e53935;
+      --green: #43a047;
+      --text:  #e0e8f0;
+      --muted: #8ba0b8;
+      --accent:#00e5ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; touch-action: none; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 14px 12px 32px;
+      user-select: none;
+    }
+    h1 { font-size: 1rem; color: var(--teal); letter-spacing: 2px; margin-bottom: 14px; text-align: center; }
+
+    /* ── BLE 設定 ── */
+    details#ble-config {
+      width: 100%; max-width: 520px;
+      background: var(--card2); border-radius: 10px;
+      padding: 10px 14px; margin-bottom: 12px; font-size: 0.76rem; color: var(--muted);
+    }
+    details#ble-config summary { cursor: pointer; color: var(--teal); font-size: 0.8rem; }
+    .uuid-row { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+    .uuid-row label { width: 90px; flex-shrink: 0; }
+    .uuid-row input {
+      flex: 1; min-width: 180px;
+      background: #111c28; border: 1px solid #2a3f58; color: var(--text);
+      border-radius: 6px; padding: 4px 8px; font-size: 0.74rem;
+    }
+
+    /* ── 連線行 ── */
+    .connect-row { display: flex; gap: 10px; width: 100%; max-width: 520px; margin-bottom: 10px; }
+    .connect-card {
+      flex: 1; background: var(--card); border-radius: 12px; padding: 10px 8px;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    .connect-card .clabel { font-size: 0.76rem; color: var(--muted); }
+    .badge {
+      font-size: 0.68rem; padding: 2px 8px; border-radius: 10px;
+      background: #263040; color: var(--muted);
+    }
+    .badge.on  { background: #1a3a2a; color: #66bb6a; }
+    .badge.err { background: #3a1a1a; color: #ef5350; }
+
+    /* ── 按鈕 ── */
+    .btn {
+      width: 100%; padding: 9px 0; border: none; border-radius: 8px;
+      font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      transition: opacity .15s, transform .1s; letter-spacing: 1px;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-teal  { background: var(--teal); color: #fff; }
+    .btn-green { background: var(--green); color: #fff; }
+    .btn-red   { background: var(--red); color: #fff; }
+    .btn-gray  { background: #2a3f58; color: var(--muted); }
+
+    /* ── 主卡 ── */
+    .main-card {
+      width: 100%; max-width: 520px; background: var(--card);
+      border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+    }
+    .action-row { display: flex; gap: 10px; margin-bottom: 14px; }
+    .action-row .btn { flex: 1; padding: 13px 0; font-size: 0.95rem; }
+
+    /* ── 速度設定 ── */
+    .speed-section { display: flex; flex-direction: column; gap: 10px; }
+    .speed-row { display: flex; align-items: center; gap: 10px; }
+    .speed-row label { font-size: 0.78rem; color: var(--muted); width: 130px; flex-shrink: 0; }
+    .speed-row input[type=range] {
+      flex: 1; -webkit-appearance: none; height: 6px;
+      background: #263040; border-radius: 4px; outline: none;
+    }
+    .speed-row input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 20px; height: 20px;
+      border-radius: 50%; background: var(--teal); cursor: pointer;
+      box-shadow: 0 0 6px rgba(0,191,165,0.5);
+    }
+    .speed-val { font-size: 0.9rem; font-weight: 700; color: var(--accent); width: 40px; text-align: right; }
+    .speed-unit { font-size: 0.7rem; color: var(--muted); width: 32px; }
+
+    /* ── 搖桿區 ── */
+    .joystick-section {
+      width: 100%; max-width: 520px; background: var(--card);
+      border-radius: 14px; padding: 16px; margin-bottom: 12px;
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
+    }
+    .joystick-title { font-size: 0.82rem; color: var(--teal); font-weight: 600; letter-spacing: 1px; }
+    .joystick-wrapper { position: relative; display: flex; justify-content: center; align-items: center; }
+    #joystick-canvas { cursor: grab; border-radius: 50%; display: block; touch-action: none; }
+    #joystick-canvas:active { cursor: grabbing; }
+
+    /* ── 搖桿數值顯示 ── */
+    .joystick-vals {
+      display: flex; gap: 24px; font-size: 0.78rem; color: var(--muted);
+    }
+    .joystick-vals span { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .joystick-vals b { font-size: 1.1rem; color: var(--accent); }
+    .joystick-vals b.neg { color: #ff7043; }
+
+    /* ── RPM 儀表 ── */
+    .rpm-row { display: flex; gap: 12px; width: 100%; max-width: 520px; margin-bottom: 12px; }
+    .gauge-card {
+      flex: 1; background: var(--card); border-radius: 12px; padding: 12px 8px;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    .gauge-label { font-size: 0.76rem; color: var(--muted); }
+    .gauge-val   { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+    .gauge-unit  { font-size: 0.68rem; color: var(--muted); }
+
+    /* ── 日誌 ── */
+    #log {
+      width: 100%; max-width: 520px; background: #111c28;
+      border-radius: 10px; padding: 8px 12px; font-size: 0.68rem;
+      color: var(--muted); max-height: 88px; overflow-y: auto; font-family: monospace;
+    }
+    #log .ok  { color: #66bb6a; }
+    #log .err { color: #ef5350; }
+
+    /* ── 緊急閃爍 ── */
+    #e-overlay {
+      display: none; position: fixed; inset: 0;
+      border: 5px solid var(--red); pointer-events: none; z-index: 9999;
+      animation: flash .45s infinite alternate;
+    }
+    @keyframes flash { from { opacity: .2; } to { opacity: 1; } }
+
+    /* ── 方向箭頭指示器 ── */
+    .dir-indicator {
+      font-size: 1.4rem; color: var(--muted); min-width: 32px; text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div id="e-overlay"></div>
+<h1>&#x25CF; 車輛藍芽搖桿控制</h1>
+
+<!-- BLE UUID 設定 -->
+<details id="ble-config">
+  <summary>&#x2699;&#xFE0F; BLE UUID 設定（展開修改）</summary>
+  <div class="uuid-row">
+    <label>Service UUID</label>
+    <input id="svc-uuid"    value="0000ffe0-0000-1000-8000-00805f9b34fb">
+  </div>
+  <div class="uuid-row">
+    <label>Write UUID</label>
+    <input id="write-uuid"  value="0000ffe1-0000-1000-8000-00805f9b34fb">
+  </div>
+  <div class="uuid-row">
+    <label>Notify UUID</label>
+    <input id="notify-uuid" value="0000ffe1-0000-1000-8000-00805f9b34fb">
+  </div>
+  <div style="margin-top:7px;color:#607d8b;font-size:0.72rem;">
+    HM-10/CC2541 預設: FFE0/FFE1 &nbsp;|&nbsp; ESP32 UART: 6E400001.../TX:6E400002.../RX:6E400003...
+  </div>
+</details>
+
+<!-- 連線卡片 -->
+<div class="connect-row">
+  <div class="connect-card">
+    <div class="clabel">左輪</div>
+    <div class="badge" id="left-badge">未連線</div>
+    <button class="btn btn-teal" id="btn-left"    onclick="connectWheel('left')">連接左輪</button>
+    <button class="btn btn-gray" id="btn-left-dc" onclick="disconnect('left')" disabled>中斷</button>
+  </div>
+  <div class="connect-card">
+    <div class="clabel">右輪</div>
+    <div class="badge" id="right-badge">未連線</div>
+    <button class="btn btn-teal" id="btn-right"    onclick="connectWheel('right')">連接右輪</button>
+    <button class="btn btn-gray" id="btn-right-dc" onclick="disconnect('right')" disabled>中斷</button>
+  </div>
+</div>
+
+<!-- 啟動 / 煞車 + 速度設定 -->
+<div class="main-card">
+  <div class="action-row">
+    <button class="btn btn-green" onclick="startAll()">&#x25BA; 全車啟動</button>
+    <button class="btn btn-red"   onclick="emergencyStop()">&#x25A0; 緊急煞車</button>
+  </div>
+
+  <div class="speed-section">
+    <!-- 前進速度 -->
+    <div class="speed-row">
+      <label>前進最高速 (RPM)</label>
+      <input type="range" id="fwd-speed" min="0" max="1000" value="400" step="10"
+             oninput="document.getElementById('fwd-val').textContent=this.value">
+      <span class="speed-val" id="fwd-val">400</span>
+      <span class="speed-unit">RPM</span>
+    </div>
+    <!-- 後退速度 -->
+    <div class="speed-row">
+      <label>後退最高速 (RPM)</label>
+      <input type="range" id="rev-speed" min="0" max="500" value="200" step="10"
+             oninput="document.getElementById('rev-val').textContent=this.value">
+      <span class="speed-val" id="rev-val">200</span>
+      <span class="speed-unit">RPM</span>
+    </div>
+    <!-- 轉向靈敏度 -->
+    <div class="speed-row">
+      <label>轉向靈敏度 (%)</label>
+      <input type="range" id="steer-sens" min="10" max="100" value="70" step="5"
+             oninput="document.getElementById('sens-val').textContent=this.value">
+      <span class="speed-val" id="sens-val">70</span>
+      <span class="speed-unit">%</span>
+    </div>
+  </div>
+</div>
+
+<!-- 搖桿 -->
+<div class="joystick-section">
+  <div class="joystick-title">搖桿控制 (拖曳或觸控)</div>
+  <div class="joystick-wrapper">
+    <canvas id="joystick-canvas" width="220" height="220"></canvas>
+  </div>
+  <!-- 數值顯示 -->
+  <div class="joystick-vals">
+    <span>
+      <div>油門</div>
+      <b id="jv-throttle">0</b>
+      <div>%</div>
+    </span>
+    <span style="font-size:2rem;color:var(--muted);align-self:center;" id="dir-arrow">&#x2022;</span>
+    <span>
+      <div>轉向</div>
+      <b id="jv-steering">0</b>
+      <div>%</div>
+    </span>
+  </div>
+</div>
+
+<!-- RPM 儀表 -->
+<div class="rpm-row">
+  <div class="gauge-card">
+    <div class="gauge-label">左輪 RPM</div>
+    <canvas id="gauge-left"  width="120" height="70"></canvas>
+    <div class="gauge-val" id="val-left">0</div>
+    <div class="gauge-unit">RPM</div>
+  </div>
+  <div class="gauge-card">
+    <div class="gauge-label">右輪 RPM</div>
+    <canvas id="gauge-right" width="120" height="70"></canvas>
+    <div class="gauge-val" id="val-right">0</div>
+    <div class="gauge-unit">RPM</div>
+  </div>
+</div>
+
+<!-- 日誌 -->
+<div id="log"><span class="ok">[系統] 就緒</span><br></div>
+
+<script>
+// ═══════════════════════════════════════
+//  BLE 狀態
+// ═══════════════════════════════════════
+const wheels = {
+  left:  { device:null, writeChar:null, notifyChar:null },
+  right: { device:null, writeChar:null, notifyChar:null }
+};
+let running   = false;
+let sendTimer = null;
+let leftTarget = 0, rightTarget = 0;
+
+// ═══════════════════════════════════════
+//  搖桿狀態
+// ═══════════════════════════════════════
+const JOY_R    = 100;   // 搖桿底盤半徑
+const KNOB_R   = 28;    // 手柄半徑
+const DEAD     = 0.05;  // 死區
+let joyX = 0, joyY = 0; // -1 ~ 1
+let dragging = false;
+
+// ═══════════════════════════════════════
+//  日誌
+// ═══════════════════════════════════════
+function log(msg, cls='') {
+  const el = document.getElementById('log');
+  const t  = new Date().toLocaleTimeString('zh-TW');
+  el.innerHTML += `<span class="${cls}">[${t}] ${msg}</span><br>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ═══════════════════════════════════════
+//  BLE 連線
+// ═══════════════════════════════════════
+async function connectWheel(side) {
+  if (!navigator.bluetooth) { log('不支援 Web Bluetooth，請用 Chrome/Edge','err'); return; }
+  const svc    = document.getElementById('svc-uuid').value.trim().toLowerCase();
+  const writeU = document.getElementById('write-uuid').value.trim().toLowerCase();
+  const notifyU= document.getElementById('notify-uuid').value.trim().toLowerCase();
+  setBadge(side,'連線中...','');
+  try {
+    const dev = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:[svc] });
+    wheels[side].device = dev;
+    dev.addEventListener('gattserverdisconnected', ()=>onDisconnect(side));
+    log(`[${side}] 找到: ${dev.name||'(無名稱)'}`);
+    const srv  = await dev.gatt.connect();
+    const svcs = await srv.getPrimaryService(svc);
+    wheels[side].writeChar = await svcs.getCharacteristic(writeU);
+    try {
+      const nc = await svcs.getCharacteristic(notifyU);
+      await nc.startNotifications();
+      nc.addEventListener('characteristicvaluechanged', e=>onNotify(side,e));
+      wheels[side].notifyChar = nc;
+      log(`[${side}] Notify 啟用`,'ok');
+    } catch { log(`[${side}] 無 Notify`); }
+    setBadge(side,'已連線','on');
+    setBtns(side,true);
+    log(`[${side}] 連線成功`,'ok');
+  } catch(e) {
+    setBadge(side,'失敗','err');
+    log(`[${side}] ${e.message}`,'err');
+  }
+}
+
+function disconnect(side) {
+  if (wheels[side].device?.gatt?.connected) wheels[side].device.gatt.disconnect();
+  onDisconnect(side);
+}
+function onDisconnect(side) {
+  wheels[side].writeChar = null;
+  setBadge(side,'未連線','');
+  setBtns(side,false);
+  log(`[${side}] 中斷連線`);
+}
+function onNotify(side,e) {
+  const v = new TextDecoder().decode(e.target.value).trim();
+  const m = v.match(/(-?\d+)/);
+  if (m) updateGauge(side, parseInt(m[1]));
+}
+
+// ═══════════════════════════════════════
+//  差速計算
+// ═══════════════════════════════════════
+function calcTargets() {
+  const fwd   = parseInt(document.getElementById('fwd-speed').value);
+  const rev   = parseInt(document.getElementById('rev-speed').value);
+  const sens  = parseInt(document.getElementById('steer-sens').value) / 100;
+
+  // joyY: +1=前進, -1=後退；joyX: +1=右, -1=左
+  const throttle = -joyY;  // canvas Y 軸向下為正，需反轉
+  const steer    = joyX * sens;
+
+  const maxSpd = throttle >= 0 ? fwd : rev;
+  const base   = throttle * maxSpd;
+
+  let L = base + steer * fwd;
+  let R = base - steer * fwd;
+
+  // 箝位
+  const limit = Math.max(fwd, rev);
+  L = clamp(L, -limit, limit);
+  R = clamp(R, -limit, limit);
+
+  leftTarget  = Math.round(L);
+  rightTarget = Math.round(R);
+}
+
+function clamp(v,lo,hi){ return Math.max(lo,Math.min(hi,v)); }
+
+// ═══════════════════════════════════════
+//  傳送
+// ═══════════════════════════════════════
+function startSendLoop() {
+  if (sendTimer) return;
+  sendTimer = setInterval(async ()=>{
+    if (!running) return;
+    calcTargets();
+    await tx('left',  `L:${leftTarget}\n`);
+    await tx('right', `R:${rightTarget}\n`);
+    if (!wheels.left.notifyChar)  updateGauge('left',  leftTarget);
+    if (!wheels.right.notifyChar) updateGauge('right', rightTarget);
+  }, 50);
+}
+function stopSendLoop(){ clearInterval(sendTimer); sendTimer=null; }
+
+async function tx(side, text) {
+  if (!wheels[side].writeChar) return;
+  try { await wheels[side].writeChar.writeValueWithoutResponse(new TextEncoder().encode(text)); }
+  catch(e){ log(`[${side}] TX: ${e.message}`,'err'); }
+}
+
+// ═══════════════════════════════════════
+//  啟動 / 緊急煞車
+// ═══════════════════════════════════════
+function startAll() {
+  running = true;
+  startSendLoop();
+  document.getElementById('e-overlay').style.display='none';
+  log('全車啟動','ok');
+}
+async function emergencyStop() {
+  running = false; joyX = 0; joyY = 0;
+  leftTarget = 0; rightTarget = 0;
+  await tx('left','STOP\n'); await tx('right','STOP\n');
+  await tx('left','L:0\n');  await tx('right','R:0\n');
+  stopSendLoop();
+  updateGauge('left',0); updateGauge('right',0);
+  drawJoystick(); updateJoyVals();
+  const ov = document.getElementById('e-overlay');
+  ov.style.display='block';
+  setTimeout(()=>{ ov.style.display='none'; running=false; },2000);
+  log('緊急煞車！','err');
+}
+
+// ═══════════════════════════════════════
+//  搖桿繪製
+// ═══════════════════════════════════════
+const jCanvas = document.getElementById('joystick-canvas');
+const jCtx    = jCanvas.getContext('2d');
+const CX = jCanvas.width/2, CY = jCanvas.height/2;
+
+function drawJoystick() {
+  jCtx.clearRect(0,0,jCanvas.width,jCanvas.height);
+
+  // 底盤
+  jCtx.beginPath();
+  jCtx.arc(CX, CY, JOY_R, 0, Math.PI*2);
+  jCtx.fillStyle = '#12202e';
+  jCtx.fill();
+  jCtx.strokeStyle = '#2a4060';
+  jCtx.lineWidth = 2;
+  jCtx.stroke();
+
+  // 十字線
+  jCtx.strokeStyle = '#1e3450';
+  jCtx.lineWidth = 1;
+  jCtx.beginPath(); jCtx.moveTo(CX-JOY_R+8,CY); jCtx.lineTo(CX+JOY_R-8,CY); jCtx.stroke();
+  jCtx.beginPath(); jCtx.moveTo(CX,CY-JOY_R+8); jCtx.lineTo(CX,CY+JOY_R-8); jCtx.stroke();
+
+  // 死區圓
+  jCtx.beginPath();
+  jCtx.arc(CX,CY,JOY_R*DEAD+6,0,Math.PI*2);
+  jCtx.strokeStyle='#1e3450'; jCtx.lineWidth=1; jCtx.stroke();
+
+  // 方向箭頭提示
+  const arrows = [
+    {dx:0, dy:-1, t:'▲ 前進', x:CX,   y:CY-JOY_R+14},
+    {dx:0, dy:+1, t:'▼ 後退', x:CX,   y:CY+JOY_R-6},
+    {dx:-1,dy:0,  t:'◀ 左',  x:CX-JOY_R+14, y:CY},
+    {dx:+1,dy:0,  t:'▶ 右',  x:CX+JOY_R-14, y:CY},
+  ];
+  jCtx.font = '10px sans-serif';
+  jCtx.textAlign = 'center';
+  jCtx.textBaseline = 'middle';
+  jCtx.fillStyle = '#2a4a6a';
+  arrows.forEach(a=>{ jCtx.fillText(a.t, a.x, a.y); });
+
+  // 手柄位置
+  const kx = CX + joyX * JOY_R;
+  const ky = CY + joyY * JOY_R;
+
+  // 手柄光暈
+  const grd = jCtx.createRadialGradient(kx,ky,2,kx,ky,KNOB_R+10);
+  grd.addColorStop(0,'rgba(0,229,255,0.3)');
+  grd.addColorStop(1,'rgba(0,229,255,0)');
+  jCtx.beginPath(); jCtx.arc(kx,ky,KNOB_R+10,0,Math.PI*2);
+  jCtx.fillStyle = grd; jCtx.fill();
+
+  // 手柄
+  const kgrd = jCtx.createRadialGradient(kx-4,ky-4,2,kx,ky,KNOB_R);
+  kgrd.addColorStop(0,'#40e0d0');
+  kgrd.addColorStop(1,'#007a70');
+  jCtx.beginPath(); jCtx.arc(kx,ky,KNOB_R,0,Math.PI*2);
+  jCtx.fillStyle = kgrd; jCtx.fill();
+  jCtx.strokeStyle='#00e5ff'; jCtx.lineWidth=2; jCtx.stroke();
+}
+
+function updateJoyVals() {
+  const throttlePct = Math.round(-joyY * 100);
+  const steerPct    = Math.round(joyX  * 100);
+
+  const tv = document.getElementById('jv-throttle');
+  const sv = document.getElementById('jv-steering');
+  const da = document.getElementById('dir-arrow');
+
+  tv.textContent = (throttlePct >= 0 ? '+' : '') + throttlePct;
+  sv.textContent = (steerPct   >= 0 ? '+' : '') + steerPct;
+  tv.className = throttlePct < 0 ? 'neg' : '';
+  sv.className = steerPct   < 0 ? 'neg' : '';
+
+  // 方向箭頭
+  const T = throttlePct, S = steerPct;
+  if (Math.abs(T)<5 && Math.abs(S)<5) da.textContent='•';
+  else if (Math.abs(T)>=Math.abs(S)) da.textContent = T>=0 ? '▲' : '▼';
+  else da.textContent = S>=0 ? '▶' : '◀';
+  da.style.color = (T<0||S<0) ? '#ff7043' : (T>0||S>0) ? '#00e5ff' : '#8ba0b8';
+}
+
+// ═══════════════════════════════════════
+//  搖桿事件處理
+// ═══════════════════════════════════════
+function getPos(e) {
+  const r = jCanvas.getBoundingClientRect();
+  const src = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - r.left, y: src.clientY - r.top };
+}
+
+function applyPos(px, py) {
+  let dx = (px - CX) / JOY_R;
+  let dy = (py - CY) / JOY_R;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist > 1) { dx /= dist; dy /= dist; }
+  // 死區
+  if (Math.abs(dx) < DEAD) dx = 0;
+  if (Math.abs(dy) < DEAD) dy = 0;
+  joyX = dx; joyY = dy;
+  drawJoystick();
+  updateJoyVals();
+}
+
+jCanvas.addEventListener('mousedown', e=>{ dragging=true; applyPos(...Object.values(getPos(e))); });
+jCanvas.addEventListener('mousemove', e=>{ if(dragging) applyPos(...Object.values(getPos(e))); });
+window.addEventListener('mouseup',    ()=>{ if(dragging){ dragging=false; snapBack(); }});
+
+jCanvas.addEventListener('touchstart', e=>{ e.preventDefault(); dragging=true; const p=getPos(e); applyPos(p.x,p.y); }, {passive:false});
+jCanvas.addEventListener('touchmove',  e=>{ e.preventDefault(); if(dragging){ const p=getPos(e); applyPos(p.x,p.y); }}, {passive:false});
+jCanvas.addEventListener('touchend',   e=>{ e.preventDefault(); dragging=false; snapBack(); }, {passive:false});
+
+function snapBack() {
+  // 平滑歸中
+  const steps = 8;
+  let i = 0;
+  const sx=joyX, sy=joyY;
+  const id = setInterval(()=>{
+    i++;
+    joyX = sx*(1-i/steps);
+    joyY = sy*(1-i/steps);
+    drawJoystick(); updateJoyVals();
+    if (i>=steps){ joyX=0; joyY=0; drawJoystick(); updateJoyVals(); clearInterval(id); }
+  },16);
+}
+
+// ═══════════════════════════════════════
+//  RPM 儀表 (水平 bar)
+// ═══════════════════════════════════════
+function updateGauge(side, rpm) {
+  const fwd  = parseInt(document.getElementById('fwd-speed').value)||400;
+  const rev  = parseInt(document.getElementById('rev-speed').value)||200;
+  const lim  = Math.max(fwd,rev);
+  const can  = document.getElementById(`gauge-${side}`);
+  const ctx  = can.getContext('2d');
+  const W=can.width, H=can.height;
+  ctx.clearRect(0,0,W,H);
+
+  const MID = W/2;
+  const ratio = Math.min(Math.abs(rpm)/lim, 1);
+  const color = rpm<0 ? '#ff7043' : rpm>0 ? '#00e5ff' : '#2a4060';
+
+  // 背景
+  ctx.fillStyle='#1a2535'; ctx.fillRect(0,0,W,H);
+  // 中線
+  ctx.fillStyle='#263040'; ctx.fillRect(0,H/2-3,W,6);
+  // 指示 bar
+  const bw = ratio * MID;
+  if (rpm>=0) ctx.fillStyle=color, ctx.fillRect(MID,H/2-12,bw,24);
+  else        ctx.fillStyle=color, ctx.fillRect(MID-bw,H/2-12,bw,24);
+
+  // 端點圓
+  ctx.beginPath(); ctx.arc(MID,H/2,4,0,Math.PI*2);
+  ctx.fillStyle='#8ba0b8'; ctx.fill();
+
+  document.getElementById(`val-${side}`).textContent = rpm;
+  document.getElementById(`val-${side}`).style.color = color;
+}
+
+// ═══════════════════════════════════════
+//  UI 工具
+// ═══════════════════════════════════════
+function setBadge(side,text,cls){
+  const el=document.getElementById(`${side}-badge`);
+  el.textContent=text; el.className='badge '+cls;
+}
+function setBtns(side,conn){
+  document.getElementById(`btn-${side}`).disabled   =  conn;
+  document.getElementById(`btn-${side}-dc`).disabled= !conn;
+}
+
+// ═══════════════════════════════════════
+//  初始化
+// ═══════════════════════════════════════
+drawJoystick();
+updateGauge('left',0);
+updateGauge('right',0);
+</script>
+</body>
+</html>
