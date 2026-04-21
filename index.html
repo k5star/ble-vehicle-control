@@ -234,9 +234,9 @@
   <div class="joystick-wrap">
     <canvas id="jCanvas" width="220" height="220"></canvas>
     <div class="joy-vals">
-      <span><div>油門</div><b id="jvT">0</b><div>%</div></span>
+      <span><div>前進/後退</div><b id="jvT">0</b><div>%</div></span>
       <span style="font-size:1.6rem;align-self:center;" id="dirArrow">•</span>
-      <span><div>轉向</div><b id="jvS">0</b><div>%</div></span>
+      <span><div>左轉/右轉</div><b id="jvS">0</b><div>%</div></span>
     </div>
   </div>
 </div>
@@ -452,14 +452,18 @@ function calcTargets() {
   const rev  = parseInt(document.getElementById('revSpeed').value);
   const sens = parseInt(document.getElementById('steerSens').value) / 100;
 
-  const throttle = -joyY;  // canvas Y 向下為正，反轉
-  const steer    = joyX * sens;
+  // ↑ 上(joyY<0) = 前進  ↓ 下(joyY>0) = 後退
+  // ← 左(joyX<0) = 左轉  → 右(joyX>0) = 右轉
+  const fwdPct  = -joyY;        // 上=正=前進
+  const turnPct = joyX * sens;  // 右=正=右轉
 
-  const maxSpd = throttle >= 0 ? fwd : rev;
-  const base   = throttle * maxSpd;
+  const spd = fwdPct >= 0 ? fwd : rev;
 
-  let L = base + steer * fwd;
-  let R = base - steer * fwd;
+  // 適用右馬達反裝硬體的差速公式：
+  //   前進: L=+spd (CW=前進), R=-spd (CCW=前進，因反裝)
+  //   右轉: L=+turn (CW=前進), R=+turn (CW=後退，因反裝) → 右轉
+  let L =  fwdPct * spd + turnPct * fwd;
+  let R = -fwdPct * spd + turnPct * fwd;
 
   const limit = Math.max(fwd, rev);
   return {
@@ -574,8 +578,8 @@ function drawJoystick() {
   jCtx.textBaseline = 'middle'; jCtx.fillStyle = '#1e3a50';
   jCtx.fillText('▲ 前進', CX, CY - JOY_R + 14);
   jCtx.fillText('▼ 後退', CX, CY + JOY_R - 10);
-  jCtx.fillText('◀', CX - JOY_R + 12, CY);
-  jCtx.fillText('▶', CX + JOY_R - 12, CY);
+  jCtx.fillText('◀ 左轉', CX - JOY_R + 22, CY);
+  jCtx.fillText('右轉 ▶', CX + JOY_R - 22, CY);
 
   // 手柄
   const kx = CX + joyX * JOY_R, ky = CY + joyY * JOY_R;
