@@ -12,13 +12,16 @@
       --teal:#00bfa5; --red:#e53935; --green:#43a047;
       --text:#e0e8f0; --muted:#8ba0b8; --accent:#00e5ff;
     }
-    *{box-sizing:border-box;margin:0;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent;}
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
     body{
       background:var(--bg);color:var(--text);
       font-family:'Segoe UI','Microsoft JhengHei',system-ui,sans-serif;
       min-height:100vh;display:flex;flex-direction:column;align-items:center;
       padding:12px 10px 28px;user-select:none;
+      touch-action:pan-y; /* 允許上下滾動 */
     }
+    /* 只有搖桿 canvas 才完全禁止 touch-action */
+    #jCanvas{touch-action:none;}
     h1{font-size:.95rem;color:var(--teal);letter-spacing:2px;margin-bottom:12px;text-align:center;}
 
     /* ── BLE 設定 ── */
