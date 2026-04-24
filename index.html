@@ -250,6 +250,27 @@
   </div>
 </div>
 
+<!-- ═══ 初始化模式（寫入參數）═══ -->
+<div class="card" style="margin-bottom:10px;border:1px solid #1a4060;">
+  <div class="card-title">⚙ 初始化馬達模式（連線後先按）</div>
+  <div style="font-size:.72rem;color:var(--muted);margin-bottom:8px;line-height:1.6;">
+    透過 BLE 寫入參數，不需燒韌體：<br>
+    <span style="color:#40c4ff;">02-03 = 0</span>（NET模式，BLE可控）&nbsp;
+    <span style="color:#40c4ff;">02-10 = 0</span>（Single，獨立控制）
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button class="btn btn-teal" style="flex:2;padding:10px 0;" onclick="initMotorMode()">
+      ✓ 寫入模式參數（兩輪）
+    </button>
+    <button class="btn btn-gray" style="flex:1;padding:10px 0;font-size:.72rem;" onclick="readMotorMode()">
+      讀取現況
+    </button>
+  </div>
+  <div id="initStatus" style="margin-top:8px;font-size:.68rem;font-family:monospace;color:#406080;text-align:center;">
+    尚未初始化
+  </div>
+</div>
+
 <!-- ═══ 啟動 / 煞車 + 速度設定 ═══ -->
 <div class="card">
   <div class="action-row">
@@ -628,6 +649,59 @@ function stopSendLoop() { clearInterval(sendTimer); sendTimer = null; }
 // ═══════════════════════════════════════════════════
 //  全車啟動 / 緊急煞車
 // ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+//  初始化馬達模式（BLE 寫入參數，免燒韌體）
+//  02-03 (0202h) = 0 → NET/Modbus 控制來源
+//  02-10 (0209h) = 0 → Single 模式
+// ═══════════════════════════════════════════════════
+async function initMotorMode() {
+  const hasL = !!W.L.txChar, hasR = !!W.R.txChar;
+  if (!hasL && !hasR) { log('請先連接 BLE', 'err'); return; }
+
+  document.getElementById('initStatus').textContent = '寫入中…';
+  const results = [];
+
+  for (const side of ['L', 'R']) {
+    if (!W[side].txChar) continue;
+    const nid = getNodeId(side);
+    try {
+      // Step1: 02-03 = 0（NET 模式）
+      await enqueueTx(side, mbFC06(nid, 0x0202, 0));
+      await sleep(200);
+      // Step2: 02-10 = 0（Single）
+      await enqueueTx(side, mbFC06(nid, 0x0209, 0));
+      await sleep(200);
+      // Step3: 儲存到 EEPROM（若有需要可加，目前用 RAM 即可）
+      results.push(`${side}✓`);
+      log(`[${side}] 02-03=0, 02-10=0 寫入完成`, 'ok');
+    } catch(e) {
+      results.push(`${side}✗`);
+      log(`[${side}] 寫入失敗: ${e.message}`, 'err');
+    }
+  }
+
+  document.getElementById('initStatus').textContent =
+    `完成 ${results.join(' ')} — 02-03=0(NET) 02-10=0(Single)`;
+}
+
+async function readMotorMode() {
+  if (!W.L.txChar && !W.R.txChar) { log('請先連接 BLE', 'err'); return; }
+
+  // 讀取 02-03 和 02-10 目前值
+  // FC03 讀取：從 0202h 開始讀 8 個暫存器
+  for (const side of ['L', 'R']) {
+    if (!W[side].txChar) continue;
+    const nid = getNodeId(side);
+    const nn = nid & 0xFF;
+    const sum = (nn + 0x03 + 0x02 + 0x02 + 0x00 + 0x08) & 0xFF;
+    const lrc = ((~sum) + 1) & 0xFF;
+    const h = v => v.toString(16).toUpperCase().padStart(2,'0');
+    const frame = `:${h(nn)}030202${h(0)}${h(8)}${h(lrc)}\r\n`;
+    await enqueueTx(side, frame);
+    log(`[${side}] 讀取 02-03/02-10 參數…`, 'tx');
+  }
+}
+
 async function startAll() {
   running = true;
   startSendLoop();
