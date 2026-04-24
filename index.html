@@ -131,6 +131,23 @@
     }
     .mb-bar .tx{color:#40c4ff;} .mb-bar .ok{color:#66bb6a;} .mb-bar .err{color:#ef5350;}
 
+    /* ── 馬達狀態監控 ── */
+    .status-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;}
+    .status-panel{background:#0d1820;border-radius:10px;padding:10px 12px;}
+    .status-panel h4{font-size:.7rem;color:var(--teal);margin-bottom:6px;letter-spacing:1px;}
+    .status-item{display:flex;justify-content:space-between;align-items:center;
+                 padding:3px 0;border-bottom:1px solid #1a2a3a;font-size:.72rem;}
+    .status-item:last-child{border-bottom:none;}
+    .s-label{color:var(--muted);}
+    .s-val{font-family:monospace;font-weight:700;color:var(--accent);}
+    .s-val.run{color:#66bb6a;} .s-val.stop{color:#4a6080;} .s-val.fault{color:#ef5350;}
+    .s-val.warn{color:#ff9800;}
+    .poll-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+    .poll-row select{flex:1;background:#111c28;border:1px solid #2a3f58;
+                     color:var(--text);border-radius:6px;padding:4px 8px;font-size:.72rem;outline:none;}
+    .raw-hex{margin-top:6px;font-size:.6rem;font-family:monospace;color:#2a4060;
+             background:#070f18;border-radius:6px;padding:4px 8px;word-break:break-all;min-height:18px;}
+
     /* ── AI 語音控制 ── */
     #aiChatLog{
       background:#0d1820;border-radius:8px;padding:8px 10px;
@@ -340,6 +357,57 @@
   </div>
 </div>
 
+<!-- ═══ 馬達狀態監控 ═══ -->
+<div class="card">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span>📊 馬達狀態監控（LOG）</span>
+    <button id="btnPoll" onclick="toggleStatusPoll()"
+            style="background:#1e3050;border:1px solid #2a4060;color:#8ba0b8;
+                   border-radius:6px;padding:3px 12px;font-size:.7rem;cursor:pointer;">
+      ▶ 開始監控
+    </button>
+  </div>
+  <div class="poll-row">
+    <label style="font-size:.7rem;color:var(--muted);white-space:nowrap;">輪詢間隔</label>
+    <select id="pollInterval">
+      <option value="500">500 ms（快）</option>
+      <option value="1000" selected>1 秒</option>
+      <option value="2000">2 秒</option>
+      <option value="5000">5 秒</option>
+    </select>
+    <label style="font-size:.7rem;color:var(--muted);white-space:nowrap;margin-left:6px;">讀取輪</label>
+    <select id="pollSide">
+      <option value="L">左輪</option>
+      <option value="R">右輪</option>
+      <option value="LR" selected>兩輪</option>
+    </select>
+  </div>
+  <div class="status-grid">
+    <!-- 左輪 -->
+    <div class="status-panel">
+      <h4>左輪狀態</h4>
+      <div class="status-item"><span class="s-label">狀態</span><span class="s-val stop" id="sL_state">—</span></div>
+      <div class="status-item"><span class="s-label">轉速</span><span class="s-val" id="sL_rpm">—</span></div>
+      <div class="status-item"><span class="s-label">電流</span><span class="s-val" id="sL_cur">—</span></div>
+      <div class="status-item"><span class="s-label">電壓</span><span class="s-val" id="sL_volt">—</span></div>
+      <div class="status-item"><span class="s-label">頻率</span><span class="s-val" id="sL_freq">—</span></div>
+      <div class="status-item"><span class="s-label">警報</span><span class="s-val" id="sL_alarm">—</span></div>
+      <div class="raw-hex" id="sL_raw">等待資料…</div>
+    </div>
+    <!-- 右輪 -->
+    <div class="status-panel">
+      <h4>右輪狀態</h4>
+      <div class="status-item"><span class="s-label">狀態</span><span class="s-val stop" id="sR_state">—</span></div>
+      <div class="status-item"><span class="s-label">轉速</span><span class="s-val" id="sR_rpm">—</span></div>
+      <div class="status-item"><span class="s-label">電流</span><span class="s-val" id="sR_cur">—</span></div>
+      <div class="status-item"><span class="s-label">電壓</span><span class="s-val" id="sR_volt">—</span></div>
+      <div class="status-item"><span class="s-label">頻率</span><span class="s-val" id="sR_freq">—</span></div>
+      <div class="status-item"><span class="s-label">警報</span><span class="s-val" id="sR_alarm">—</span></div>
+      <div class="raw-hex" id="sR_raw">等待資料…</div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ AI 語音控制 ═══ -->
 <div class="card">
   <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -422,6 +490,19 @@ function mbFC06(nodeId, addr, val) {
   return `:${h(nn)}06${h(aH)}${h(aL)}${h(vH)}${h(vL)}${h(lrc)}\r\n`;
 }
 
+// ═══════════════════════════════════════════════════
+//  Modbus ASCII FC03 (Read Holding Registers)
+// ═══════════════════════════════════════════════════
+function mbFC03(nodeId, startAddr, numRegs) {
+  const nn = nodeId & 0xFF;
+  const aH = (startAddr >> 8) & 0xFF, aL = startAddr & 0xFF;
+  const nH = (numRegs  >> 8) & 0xFF, nL = numRegs  & 0xFF;
+  const sum = (nn + 0x03 + aH + aL + nH + nL) & 0xFF;
+  const lrc = ((~sum) + 1) & 0xFF;
+  const h = v => v.toString(16).toUpperCase().padStart(2,'0');
+  return `:${h(nn)}03${h(aH)}${h(aL)}${h(nH)}${h(nL)}${h(lrc)}\r\n`;
+}
+
 const CMD_STOP = 0, CMD_CW = 1, CMD_CCW = 3;
 
 // ═══════════════════════════════════════════════════
@@ -468,14 +549,24 @@ async function processQueue(side) {
     const bytes = new TextEncoder().encode(frame);
     try {
       for (let i = 0; i < bytes.length; i += 20) {
-        await w.txChar.writeValueWithResponse(bytes.slice(i, i + 20));
-        if (bytes.length > 20) await sleep(30);
+        const chunk = bytes.slice(i, i + 20);
+        // LTC8117/HM-10 只支援 writeWithoutResponse
+        if (w.txChar.properties.writeWithoutResponse) {
+          await w.txChar.writeValueWithoutResponse(chunk);
+        } else {
+          await w.txChar.writeValueWithResponse(chunk);
+        }
+        if (bytes.length > 20) await sleep(20);
       }
       document.getElementById(`mbStat${side}`).textContent = frame.trim();
+      // 同步顯示到 log（控制指令才顯示，避免 poll 洗版）
+      if (frame.includes('1400') || frame.includes('3F08') || frame.includes('0202') || frame.includes('0209')) {
+        log(`[${side}] TX: ${frame.trim()}`, 'tx');
+      }
     } catch(e) {
       log(`[${side}] TX錯誤: ${e.message}`, 'err');
     }
-    await sleep(40);
+    await sleep(30);
   }
   w.busy = false;
 }
@@ -546,11 +637,116 @@ function onRx(side, event) {
   }
 }
 function parseReply(side, pkt) {
-  if (pkt.length >= 13 && pkt.substr(3, 2) === '06') {
+  const fc = pkt.substr(3, 2).toUpperCase();
+
+  if (fc === '06' && pkt.length >= 13) {
+    // FC06 write echo
     const addr = parseInt(pkt.substr(5, 4), 16);
     const val  = parseInt(pkt.substr(9, 4), 16);
-    const addrName = addr === 0x1400 ? '1400h(CMD)' : addr === 0x3F08 ? '3F08h(RPM)' : `${addr.toString(16).toUpperCase()}h`;
-    log(`[${side}] ✓ ${addrName} = ${val}`, 'ok');
+    const addrName = addr === 0x1400 ? '1400h(CMD)' :
+                     addr === 0x3F08 ? '3F08h(RPM)' :
+                     addr === 0x0202 ? '0202h(02-03)' :
+                     addr === 0x0209 ? '0209h(02-10)' :
+                     `${addr.toString(16).toUpperCase()}h`;
+    log(`[${side}] ✓ ${addrName}=${val}`, 'ok');
+
+  } else if (fc === '03' && pkt.length >= 9) {
+    // FC03 read response: :NN03BB[reg0][reg1]...[LRC]
+    const byteCount = parseInt(pkt.substr(5, 2), 16);
+    const numRegs   = Math.floor(byteCount / 2);
+    const regs = [];
+    for (let i = 0; i < numRegs; i++) {
+      regs.push(parseInt(pkt.substr(7 + i * 4, 4), 16));
+    }
+    if (regs.length >= 6) updateMotorStatus(side, regs, pkt);
+
+  } else if (fc === '83' || fc === '86' || fc === '90') {
+    // Exception response
+    const code = parseInt(pkt.substr(5, 2), 16);
+    const excMsg = ['', '非法功能碼', '非法數據地址', '非法數據值', '設備故障'][code] || `例外碼${code}`;
+    log(`[${side}] ✗ Modbus例外: ${excMsg}`, 'err');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  馬達狀態解析 (4600h ~ 4607h)
+//  參考 A_HMI Monitor 暫存器定義
+// ═══════════════════════════════════════════════════
+function updateMotorStatus(side, regs, rawPkt) {
+  // regs[0]=4600h 狀態字, regs[1]=頻率(0.01Hz), regs[2]=電流(0.1A),
+  // regs[3]=電壓(V), regs[4]=RPM, regs[5]=警報碼  (依驅動器實際定義)
+  const statusWord = regs[0] || 0;
+  const freqRaw    = regs[1] || 0;  // 0.01 Hz
+  const curRaw     = regs[2] || 0;  // 0.1 A
+  const voltRaw    = regs[3] || 0;  // V
+  const rpmRaw     = regs[4] || 0;
+  const alarmCode  = regs[5] || 0;
+
+  // 狀態字解碼 (常見 A 系列 VFD)
+  const isRun   = (statusWord & 0x0001) || (statusWord & 0x0002);
+  const isFault = (statusWord & 0x0008);
+  const isStop  = !isRun && !isFault;
+
+  let stateText = '停止', stateCls = 'stop';
+  if (isFault)      { stateText = '故障！'; stateCls = 'fault'; }
+  else if (isRun)   { stateText = '運轉中'; stateCls = 'run';   }
+
+  const h = id => document.getElementById(`s${side}_${id}`);
+  h('state').textContent  = `${stateText} (${statusWord.toString(16).toUpperCase().padStart(4,'0')}h)`;
+  h('state').className    = `s-val ${stateCls}`;
+  h('rpm').textContent    = rpmRaw ? `${rpmRaw} RPM` : `— (${freqRaw*0.01|0} Hz)`;
+  h('cur').textContent    = `${(curRaw*0.1).toFixed(1)} A`;
+  h('volt').textContent   = `${voltRaw} V`;
+  h('freq').textContent   = `${(freqRaw*0.01).toFixed(2)} Hz`;
+
+  if (alarmCode === 0) {
+    h('alarm').textContent = 'OK';
+    h('alarm').className   = 's-val run';
+  } else {
+    h('alarm').textContent = `ERR ${alarmCode.toString(16).toUpperCase()}h`;
+    h('alarm').className   = 's-val fault';
+    if (!W[side]._lastAlarm || W[side]._lastAlarm !== alarmCode) {
+      log(`[${side}] ⚠ 警報: ${alarmCode.toString(16).toUpperCase()}h`, 'err');
+      W[side]._lastAlarm = alarmCode;
+    }
+  }
+
+  // Raw hex 顯示
+  document.getElementById(`s${side}_raw`).textContent =
+    regs.map((r,i) => `${(0x4600+i).toString(16).toUpperCase()}h:${r.toString(16).toUpperCase().padStart(4,'0')}`).join('  ');
+}
+
+// ═══════════════════════════════════════════════════
+//  狀態輪詢控制
+// ═══════════════════════════════════════════════════
+let statusPollTimer = null;
+
+function toggleStatusPoll() {
+  if (statusPollTimer) {
+    clearInterval(statusPollTimer);
+    statusPollTimer = null;
+    document.getElementById('btnPoll').textContent = '▶ 開始監控';
+    document.getElementById('btnPoll').style.color = '#8ba0b8';
+    log('[監控] 已停止', '');
+  } else {
+    const interval = parseInt(document.getElementById('pollInterval').value) || 1000;
+    doPoll(); // 立刻執行一次
+    statusPollTimer = setInterval(doPoll, interval);
+    document.getElementById('btnPoll').textContent = '■ 停止監控';
+    document.getElementById('btnPoll').style.color = '#66bb6a';
+    log('[監控] 開始輪詢 4600h-4607h', 'ok');
+  }
+}
+
+async function doPoll() {
+  const pollSide = document.getElementById('pollSide').value;
+  const sides = pollSide === 'LR' ? ['L','R'] : [pollSide];
+  for (const s of sides) {
+    if (!W[s].txChar) continue;
+    const nid = getNodeId(s);
+    // 讀 4600h ~ 4607h (8 個暫存器)
+    await enqueueTx(s, mbFC03(nid, 0x4600, 8));
+    await sleep(50);
   }
 }
 
