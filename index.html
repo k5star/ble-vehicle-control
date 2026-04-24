@@ -357,6 +357,73 @@
   </div>
 </div>
 
+<!-- ═══ 手動指令測試（除錯用）═══ -->
+<div class="card" style="border:1px solid #2a4030;">
+  <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+    <span>🔧 手動指令測試（除錯）</span>
+    <label style="display:flex;align-items:center;gap:5px;font-size:.68rem;color:var(--muted);cursor:pointer;">
+      <input type="checkbox" id="chkFullLog" onchange="toggleFullLog(this.checked)">全LOG
+    </label>
+  </div>
+  <div style="font-size:.68rem;color:#506070;margin-bottom:8px;line-height:1.6;">
+    每次只送一個指令，觀察LOG看馬達是否回應。<br>
+    速度暫存器預設 <b>3F08h</b>，若無效可試 <b>1401h</b>（單機模式速度）。
+  </div>
+
+  <!-- 目標輪 & 速度暫存器地址 -->
+  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
+    <select id="testSide" style="background:#111c28;border:1px solid #2a3f58;color:var(--text);border-radius:6px;padding:4px 8px;font-size:.74rem;">
+      <option value="L">左輪</option>
+      <option value="R">右輪</option>
+    </select>
+    <span style="font-size:.72rem;color:var(--muted);">速度暫存器</span>
+    <select id="speedRegSel" onchange="document.getElementById('speedRegCustom').value=this.value"
+            style="background:#111c28;border:1px solid #2a3f58;color:var(--text);border-radius:6px;padding:4px 8px;font-size:.74rem;">
+      <option value="3F08">3F08h（RAM / MDL模式）</option>
+      <option value="1401">1401h（單機Modbus速度）</option>
+      <option value="0014">0014h（主頻率命令）</option>
+      <option value="0001">0001h（頻率設定）</option>
+    </select>
+    <input id="speedRegCustom" value="3F08" maxlength="4"
+           style="width:64px;background:#111c28;border:1px solid #2a3f58;color:#40c4ff;border-radius:6px;padding:4px 8px;font-size:.74rem;font-family:monospace;"
+           placeholder="XXXX">
+    <span style="font-size:.68rem;color:var(--muted);">h</span>
+  </div>
+
+  <!-- RPM 設定 -->
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+    <span style="font-size:.72rem;color:var(--muted);">RPM</span>
+    <input id="testRpm" type="number" value="300" min="0" max="3000" step="50"
+           style="width:80px;background:#111c28;border:1px solid #2a3f58;color:var(--text);border-radius:6px;padding:4px 8px;font-size:.82rem;">
+    <button class="btn btn-teal" style="flex:1;padding:8px 0;font-size:.78rem;" onclick="manualSetRpm()">
+      ① 送速度
+    </button>
+  </div>
+
+  <!-- 方向控制 -->
+  <div style="display:flex;gap:8px;margin-bottom:8px;">
+    <button class="btn btn-green" style="flex:1;padding:10px 0;" onclick="manualRun(true)">② CW 啟動</button>
+    <button class="btn" style="flex:1;padding:10px 0;background:#7b1fa2;color:#fff;" onclick="manualRun(false)">② CCW 啟動</button>
+    <button class="btn btn-red"  style="flex:1;padding:10px 0;" onclick="manualStop()">③ 停止</button>
+  </div>
+
+  <!-- 進階：寫任意暫存器 -->
+  <details style="background:#0d1820;border-radius:8px;padding:6px 10px;font-size:.68rem;color:var(--muted);">
+    <summary style="cursor:pointer;color:#4a7090;">進階：寫任意暫存器（FC06）</summary>
+    <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+      <span style="color:var(--muted);">地址</span>
+      <input id="rawAddr" value="0202" maxlength="4"
+             style="width:60px;background:#111c28;border:1px solid #2a3f58;color:#40c4ff;border-radius:6px;padding:3px 6px;font-size:.74rem;font-family:monospace;">
+      <span style="color:var(--muted);">h  值</span>
+      <input id="rawVal" value="0" type="number"
+             style="width:70px;background:#111c28;border:1px solid #2a3f58;color:var(--text);border-radius:6px;padding:3px 6px;font-size:.74rem;">
+      <button class="btn btn-gray" style="padding:6px 14px;font-size:.74rem;" onclick="manualWrite()">寫入</button>
+    </div>
+  </details>
+
+  <div id="testStatus" style="margin-top:8px;font-size:.65rem;font-family:monospace;color:#40c4ff;text-align:center;">等待測試…</div>
+</div>
+
 <!-- ═══ 馬達狀態監控 ═══ -->
 <div class="card">
   <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -559,8 +626,9 @@ async function processQueue(side) {
         if (bytes.length > 20) await sleep(20);
       }
       document.getElementById(`mbStat${side}`).textContent = frame.trim();
-      // 同步顯示到 log（控制指令才顯示，避免 poll 洗版）
-      if (frame.includes('1400') || frame.includes('3F08') || frame.includes('0202') || frame.includes('0209')) {
+      // 全LOG模式顯示所有TX；否則只顯示控制指令
+      if (fullLogMode || frame.includes('1400') || frame.includes('3F08') ||
+          frame.includes('0202') || frame.includes('0209')) {
         log(`[${side}] TX: ${frame.trim()}`, 'tx');
       }
     } catch(e) {
@@ -714,6 +782,59 @@ function updateMotorStatus(side, regs, rawPkt) {
   // Raw hex 顯示
   document.getElementById(`s${side}_raw`).textContent =
     regs.map((r,i) => `${(0x4600+i).toString(16).toUpperCase()}h:${r.toString(16).toUpperCase().padStart(4,'0')}`).join('  ');
+}
+
+// ═══════════════════════════════════════════════════
+//  手動測試函數
+// ═══════════════════════════════════════════════════
+let fullLogMode = false;
+function toggleFullLog(on) {
+  fullLogMode = on;
+  log(`[除錯] 全LOG模式: ${on ? '開啟' : '關閉'}`, on ? 'ok' : '');
+}
+
+function getTestSide() { return document.getElementById('testSide').value; }
+function getSpeedReg()  { return parseInt(document.getElementById('speedRegCustom').value || '3F08', 16); }
+function getTestRpm()   { return parseInt(document.getElementById('testRpm').value) || 300; }
+
+async function manualSetRpm() {
+  const side = getTestSide(), nid = getNodeId(side);
+  const reg  = getSpeedReg(), rpm = getTestRpm();
+  const frame = mbFC06(nid, reg, rpm);
+  document.getElementById('testStatus').textContent =
+    `TX→[${side}] ${frame.trim()}`;
+  log(`[手動][${side}] 速度 ${reg.toString(16).toUpperCase()}h = ${rpm} RPM`, 'tx');
+  await enqueueTx(side, frame);
+}
+
+async function manualRun(isCW) {
+  const side = getTestSide(), nid = getNodeId(side);
+  const cmd = isCW ? CMD_CW : CMD_CCW;
+  const frame = mbFC06(nid, 0x1400, cmd);
+  document.getElementById('testStatus').textContent =
+    `TX→[${side}] ${frame.trim()}`;
+  log(`[手動][${side}] 1400h=${cmd} (${isCW?'CW':'CCW'})`, 'tx');
+  await enqueueTx(side, frame);
+}
+
+async function manualStop() {
+  const side = getTestSide(), nid = getNodeId(side);
+  const frame = mbFC06(nid, 0x1400, CMD_STOP);
+  document.getElementById('testStatus').textContent =
+    `TX→[${side}] ${frame.trim()}`;
+  log(`[手動][${side}] 1400h=0 (STOP)`, 'tx');
+  await enqueueTx(side, frame);
+}
+
+async function manualWrite() {
+  const side = getTestSide(), nid = getNodeId(side);
+  const addr = parseInt(document.getElementById('rawAddr').value || '0', 16);
+  const val  = parseInt(document.getElementById('rawVal').value)  || 0;
+  const frame = mbFC06(nid, addr, val);
+  document.getElementById('testStatus').textContent =
+    `TX→[${side}] ${frame.trim()}`;
+  log(`[手動][${side}] ${addr.toString(16).toUpperCase()}h = ${val}`, 'tx');
+  await enqueueTx(side, frame);
 }
 
 // ═══════════════════════════════════════════════════
