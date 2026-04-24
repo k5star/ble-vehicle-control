@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>車輛控制 — Multi-Drive Lite</title>
+  <style>
+    :root {
+      --bg:#0f1923; --card:#1a2535; --card2:#1e2d40;
+      --teal:#00bfa5; --red:#e53935; --green:#43a047;
+      --text:#e0e8f0; --muted:#8ba0b8; --accent:#00e5ff;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;touch-action:none;-webkit-tap-highlight-color:transparent;}
+    body{
+      background:var(--bg);color:var(--text);
+      font-family:'Segoe UI','Microsoft JhengHei',system-ui,sans-serif;
+      min-height:100vh;display:flex;flex-direction:column;align-items:center;
+      padding:12px 10px 28px;user-select:none;
+    }
+    h1{font-size:.92rem;color:var(--teal);letter-spacing:2px;margin-bottom:10px;text-align:center;}
+    .proto-badge{
+      font-size:.68rem;background:#0a2030;border:1px solid #1a4060;
+      color:#40c4ff;padding:3px 10px;border-radius:8px;margin-bottom:12px;font-family:monospace;
+    }
+
+    /* ── 設定 ── */
+    details{width:100%;max-width:520px;background:var(--card2);border-radius:10px;
+            padding:10px 14px;margin-bottom:10px;font-size:.75rem;color:var(--muted);}
+    details summary{cursor:pointer;color:var(--teal);font-size:.8rem;padding:2px 0;}
+    .cfg-row{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap;}
+    .cfg-row label{width:110px;flex-shrink:0;color:var(--muted);}
+    .cfg-row input,.cfg-row select{
+      flex:1;min-width:80px;background:#111c28;border:1px solid #2a3f58;
+      color:var(--text);border-radius:6px;padding:4px 8px;font-size:.74rem;outline:none;
+    }
+    .cfg-note{margin-top:8px;font-size:.68rem;color:#405060;line-height:1.6;border-top:1px solid #1a3040;padding-top:6px;}
+
+    /* ── 連線 ── */
+    .connect-row{display:flex;gap:10px;width:100%;max-width:520px;margin-bottom:10px;}
+    .connect-card{
+      flex:1;background:var(--card);border-radius:12px;padding:10px 8px;
+      display:flex;flex-direction:column;align-items:center;gap:5px;
+    }
+    .clabel{font-size:.76rem;color:var(--muted);}
+    .badge{font-size:.68rem;padding:2px 8px;border-radius:10px;background:#263040;color:var(--muted);}
+    .badge.on {background:#1a3a2a;color:#66bb6a;}
+    .badge.err{background:#3a1a1a;color:#ef5350;}
+    .mb-frame{font-size:.58rem;color:#2a5070;font-family:monospace;word-break:break-all;text-align:center;min-height:14px;}
+
+    /* ── 按鈕 ── */
+    .btn{
+      width:100%;padding:9px 0;border:none;border-radius:8px;
+      font-size:.82rem;font-weight:700;cursor:pointer;
+      transition:opacity .15s,transform .1s;letter-spacing:1px;
+    }
+    .btn:active{transform:scale(.96);}
+    .btn:disabled{opacity:.4;cursor:not-allowed;}
+    .btn-teal {background:var(--teal);color:#fff;}
+    .btn-green{background:var(--green);color:#fff;}
+    .btn-red  {background:var(--red);color:#fff;}
+    .btn-gray {background:#2a3f58;color:var(--muted);}
+
+    /* ── 卡片 ── */
+    .card{
+      width:100%;max-width:520px;background:var(--card);
+      border-radius:14px;padding:14px 16px;margin-bottom:10px;
+    }
+    .card-title{font-size:.72rem;color:var(--teal);font-weight:600;letter-spacing:1px;
+                text-transform:uppercase;margin-bottom:10px;}
+    .action-row{display:flex;gap:10px;margin-bottom:12px;}
+    .action-row .btn{flex:1;padding:14px 0;font-size:.95rem;}
+
+    /* ── 速度設定 ── */
+    .speed-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+    .speed-row label{font-size:.76rem;color:var(--muted);width:120px;flex-shrink:0;}
+    .speed-row input[type=range]{
+      flex:1;-webkit-appearance:none;height:6px;
+      background:#263040;border-radius:4px;outline:none;
+    }
+    .speed-row input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none;width:22px;height:22px;
+      border-radius:50%;background:var(--teal);cursor:pointer;
+      box-shadow:0 0 6px rgba(0,191,165,.5);
+    }
+    .speed-val{font-size:.9rem;font-weight:700;color:var(--accent);width:38px;text-align:right;}
+    .speed-unit{font-size:.68rem;color:var(--muted);width:30px;}
+
+    /* ── 搖桿 ── */
+    .joystick-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;}
+    #jCanvas{cursor:grab;border-radius:50%;display:block;touch-action:none;}
+    #jCanvas:active{cursor:grabbing;}
+    .joy-vals{display:flex;gap:24px;font-size:.76rem;color:var(--muted);}
+    .joy-vals span{display:flex;flex-direction:column;align-items:center;gap:1px;}
+    .joy-vals b{font-size:1.05rem;color:var(--accent);}
+    .joy-vals b.neg{color:#ff7043;}
+
+    /* ── RPM 儀表 ── */
+    .rpm-row{display:flex;gap:10px;width:100%;max-width:520px;margin-bottom:10px;}
+    .gauge-card{
+      flex:1;background:var(--card);border-radius:12px;padding:12px 6px;
+      display:flex;flex-direction:column;align-items:center;gap:4px;
+    }
+    .gauge-label{font-size:.72rem;color:var(--muted);}
+    .gauge-val{font-size:1.5rem;font-weight:700;color:var(--accent);}
+    .gauge-dir{font-size:.68rem;padding:1px 7px;border-radius:8px;background:#1a3040;color:var(--muted);}
+    .gauge-unit{font-size:.65rem;color:var(--muted);}
+
+    /* ── 日誌 ── */
+    #log{
+      width:100%;max-width:520px;background:#111c28;
+      border-radius:10px;padding:8px 12px;font-size:.67rem;
+      color:var(--muted);max-height:90px;overflow-y:auto;font-family:monospace;
+    }
+    #log .ok {color:#66bb6a;}
+    #log .err{color:#ef5350;}
+    #log .tx {color:#40c4ff;}
+
+    /* ── 緊急閃爍 ── */
+    #eOverlay{
+      display:none;position:fixed;inset:0;border:5px solid var(--red);
+      pointer-events:none;z-index:9999;
+      animation:flash .4s infinite alternate;
+    }
+    @keyframes flash{from{opacity:.15}to{opacity:.9}}
+  </style>
+</head>
+<body>
+<div id="eOverlay"></div>
+<h1>&#x25CF; 車輛搖桿控制</h1>
+<div class="proto-badge">Multi-Drive Lite &nbsp;|&nbsp; ID=00 FC=0x41 &nbsp;|&nbsp; 廣播模式</div>
+
+<!-- ═══ BLE / MDL 設定 ═══ -->
+<details>
+  <summary>⚙ BLE &amp; Multi-Drive Lite 設定</summary>
+  <div class="cfg-row">
+    <label>Service UUID</label>
+    <input id="svcUUID" value="0000ffe0-0000-1000-8000-00805f9b34fb">
+  </div>
+  <div class="cfg-row">
+    <label>Char UUID</label>
+    <input id="charUUID" value="0000ffe1-0000-1000-8000-00805f9b34fb">
+  </div>
+  <div class="cfg-row">
+    <label>左輪 SubID</label>
+    <input id="subIdL" type="number" value="1" min="1" max="8" style="max-width:70px">
+    <label style="width:auto;margin-left:12px;">右輪 SubID</label>
+    <input id="subIdR" type="number" value="2" min="1" max="8" style="max-width:70px">
+  </div>
+  <div class="cfg-row">
+    <label>右輪方向反轉</label>
+    <select id="rightReverse">
+      <option value="0">否（兩輪同向安裝）</option>
+      <option value="1" selected>是（右輪反裝，前進用CCW）</option>
+    </select>
+  </div>
+  <div class="cfg-row">
+    <label>傳送間隔</label>
+    <select id="txInterval">
+      <option value="100">100ms（一般）</option>
+      <option value="50">50ms（較快）</option>
+      <option value="200">200ms（穩定）</option>
+    </select>
+  </div>
+  <div class="cfg-note">
+    <b>Multi-Drive Lite 指令格式：</b><br>
+    <code>:00 41 [SubNum] [SubID] [CMD] [DataH] [DataL] [LRC]\r\n</code><br>
+    CMD: 0=IStop &nbsp;|&nbsp; 1=JGF(CW) &nbsp;|&nbsp; 2=JGR(CCW) &nbsp;|&nbsp; 3=JGS(減速停)<br>
+    Data = 目標轉速 RPM（0~3000）<br>
+    同一個廣播 Frame 同時包含左右輪指令，傳送給兩個 BLE 模組
+  </div>
+</details>
+
+<!-- ═══ 連線卡片 ═══ -->
+<div class="connect-row">
+  <div class="connect-card">
+    <div class="clabel">左輪 BLE</div>
+    <div class="badge" id="badgeL">未連線</div>
+    <button class="btn btn-teal" id="btnL"   onclick="connectBLE('L')">連接左輪</button>
+    <button class="btn btn-gray" id="btnLdc" onclick="disconnectBLE('L')" disabled>中斷</button>
+    <div class="mb-frame" id="frameL">—</div>
+  </div>
+  <div class="connect-card">
+    <div class="clabel">右輪 BLE</div>
+    <div class="badge" id="badgeR">未連線</div>
+    <button class="btn btn-teal" id="btnR"   onclick="connectBLE('R')">連接右輪</button>
+    <button class="btn btn-gray" id="btnRdc" onclick="disconnectBLE('R')" disabled>中斷</button>
+    <div class="mb-frame" id="frameR">—</div>
+  </div>
+</div>
+
+<!-- ═══ 啟動 / 煞車 + 速度設定 ═══ -->
+<div class="card">
+  <div class="action-row">
+    <button class="btn btn-green" onclick="startAll()">▶ 全車啟動</button>
+    <button class="btn btn-red"   onclick="emergencyStop()">■ 緊急煞車</button>
+  </div>
+  <div class="card-title">速度設定</div>
+  <div class="speed-row">
+    <label>前進最高速</label>
+    <input type="range" id="fwdSpeed" min="50" max="3000" value="500" step="50"
+           oninput="document.getElementById('fwdVal').textContent=this.value">
+    <span class="speed-val" id="fwdVal">500</span>
+    <span class="speed-unit">RPM</span>
+  </div>
+  <div class="speed-row">
+    <label>後退最高速</label>
+    <input type="range" id="revSpeed" min="50" max="1000" value="300" step="50"
+           oninput="document.getElementById('revVal').textContent=this.value">
+    <span class="speed-val" id="revVal">300</span>
+    <span class="speed-unit">RPM</span>
+  </div>
+  <div class="speed-row">
+    <label>轉向靈敏度</label>
+    <input type="range" id="steerSens" min="10" max="100" value="70" step="5"
+           oninput="document.getElementById('sensVal').textContent=this.value">
+    <span class="speed-val" id="sensVal">70</span>
+    <span class="speed-unit">%</span>
+  </div>
+  <div class="speed-row">
+    <label>死區 (RPM)</label>
+    <input type="range" id="deadband" min="10" max="200" value="50" step="10"
+           oninput="document.getElementById('deadVal').textContent=this.value">
+    <span class="speed-val" id="deadVal">50</span>
+    <span class="speed-unit">RPM</span>
+  </div>
+</div>
+
+<!-- ═══ 搖桿 ═══ -->
+<div class="card">
+  <div class="card-title" style="text-align:center;">搖桿控制（拖曳或觸控）</div>
+  <div class="joystick-wrap">
+    <canvas id="jCanvas" width="220" height="220"></canvas>
+    <div class="joy-vals">
+      <span><div>前進/後退</div><b id="jvT">0</b><div>%</div></span>
+      <span style="font-size:1.6rem;align-self:center;" id="dirArrow">•</span>
+      <span><div>左轉/右轉</div><b id="jvS">0</b><div>%</div></span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ RPM 儀表 ═══ -->
+<div class="rpm-row">
+  <div class="gauge-card">
+    <div class="gauge-label">左輪 SubID:<span id="lblSubL">1</span></div>
+    <canvas id="gL" width="120" height="56"></canvas>
+    <div class="gauge-val" id="valL">0</div>
+    <div class="gauge-dir" id="dirL">STOP</div>
+    <div class="gauge-unit">RPM</div>
+  </div>
+  <div class="gauge-card">
+    <div class="gauge-label">右輪 SubID:<span id="lblSubR">2</span></div>
+    <canvas id="gR" width="120" height="56"></canvas>
+    <div class="gauge-val" id="valR">0</div>
+    <div class="gauge-dir" id="dirR">STOP</div>
+    <div class="gauge-unit">RPM</div>
+  </div>
+</div>
+
+<!-- ═══ 日誌 ═══ -->
+<div id="log"><span class="ok">[系統] Multi-Drive Lite 模式就緒 — ID=00 FC=0x41</span><br></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  Multi-Drive Lite 封包建構
+//  格式: :00 41 [SubNum] [SubID1] [CMD1] [DH1] [DL1] [SubID2] [CMD2] [DH2] [DL2] [LRC]\r\n
+//  CMD: 0=IStop, 1=JGF(CW), 2=JGR(CCW), 3=JGS(減速停)
+// ═══════════════════════════════════════════════════
+const MDL_CMD = { ISTOP:0, JGF:1, JGR:2, JGS:3 };
+
+function buildMDLFrame(drivers) {
+  // drivers = [{subID, cmd, rpm}, ...]
+  const h = v => v.toString(16).toUpperCase().padStart(2, '0');
+  const subNum = drivers.length;
+  let sum = 0x00 + 0x41 + subNum;
+  let body = `0041${h(subNum)}`;
+
+  for (const d of drivers) {
+    const dH = (d.rpm >> 8) & 0xFF;
+    const dL = d.rpm & 0xFF;
+    sum += d.subID + d.cmd + dH + dL;
+    body += `${h(d.subID)}${h(d.cmd)}${h(dH)}${h(dL)}`;
+  }
+
+  const lrc = ((~(sum & 0xFF)) + 1) & 0xFF;
+  return `:${body}${h(lrc)}\r\n`;
+}
+
+// ═══════════════════════════════════════════════════
+//  BLE 狀態
+// ═══════════════════════════════════════════════════
+const BLE = {
+  L: { dev:null, txChar:null, rxBuf:'', queue:[], busy:false },
+  R: { dev:null, txChar:null, rxBuf:'', queue:[], busy:false }
+};
+
+let running   = false;
+let sendTimer = null;
+let joyX = 0, joyY = 0;
+
+// ═══════════════════════════════════════════════════
+//  Log
+// ═══════════════════════════════════════════════════
+function log(msg, cls='') {
+  const el = document.getElementById('log');
+  const t  = new Date().toLocaleTimeString('zh-TW');
+  el.innerHTML += `<span class="${cls}">[${t}] ${msg}</span><br>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════
+//  BLE 傳送 Queue
+// ═══════════════════════════════════════════════════
+async function enqueueTx(side, frame) {
+  const b = BLE[side];
+  if (!b.txChar) return;
+  // 同一 frame 已在 queue 中則更新（只保留最新）
+  b.queue = b.queue.filter(f => f !== frame);
+  b.queue.push(frame);
+  if (!b.busy) processQueue(side);
+}
+
+async function processQueue(side) {
+  const b = BLE[side];
+  if (b.busy || !b.queue.length) return;
+  b.busy = true;
+  while (b.queue.length) {
+    const frame = b.queue.shift();
+    const bytes = new TextEncoder().encode(frame);
+    try {
+      for (let i = 0; i < bytes.length; i += 20) {
+        await b.txChar.writeValueWithResponse(bytes.slice(i, i + 20));
+        if (bytes.length > 20) await sleep(30);
+      }
+      // 顯示最新傳送的 frame
+      document.getElementById(`frame${side}`).textContent = frame.trim();
+    } catch(e) {
+      log(`[${side}] TX: ${e.message}`, 'err');
+    }
+    await sleep(40);
+  }
+  b.busy = false;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ═══════════════════════════════════════════════════
+//  BLE 連線
+// ═══════════════════════════════════════════════════
+async function connectBLE(side) {
+  if (!navigator.bluetooth) { log('請用 Chrome/Edge','err'); return; }
+  const svc  = document.getElementById('svcUUID').value.trim().toLowerCase();
+  const char = document.getElementById('charUUID').value.trim().toLowerCase();
+  setBadge(side, '搜尋…', '');
+  try {
+    const dev = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true, optionalServices: [svc]
+    });
+    BLE[side].dev = dev;
+    dev.addEventListener('gattserverdisconnected', () => onDisconnect(side));
+    log(`[${side}] 找到: ${dev.name || '(無名稱)'}`);
+    const srv    = await dev.gatt.connect();
+    const svcObj = await srv.getPrimaryService(svc);
+    const chars  = await svcObj.getCharacteristics();
+    for (const c of chars) {
+      if (c.properties.write || c.properties.writeWithoutResponse) BLE[side].txChar = c;
+      if (c.properties.notify || c.properties.indicate) {
+        await c.startNotifications();
+        c.addEventListener('characteristicvaluechanged', e => onRx(side, e));
+      }
+    }
+    if (!BLE[side].txChar) throw new Error('找不到可寫入 Characteristic');
+    setBadge(side, '已連線', 'on');
+    setBtns(side, true);
+    log(`[${side}] 連線成功`, 'ok');
+    updateSubLabels();
+  } catch(e) {
+    setBadge(side, '失敗', 'err');
+    log(`[${side}] ${e.message}`, 'err');
+  }
+}
+
+function disconnectBLE(side) {
+  if (BLE[side].dev?.gatt?.connected) BLE[side].dev.gatt.disconnect();
+  onDisconnect(side);
+}
+function onDisconnect(side) {
+  BLE[side].txChar = null;
+  setBadge(side, '未連線', '');
+  setBtns(side, false);
+  log(`[${side}] 中斷連線`);
+}
+
+// ═══════════════════════════════════════════════════
+//  BLE RX — 解析回應
+// ═══════════════════════════════════════════════════
+function onRx(side, event) {
+  BLE[side].rxBuf += new TextDecoder().decode(event.target.value);
+  let idx;
+  while ((idx = BLE[side].rxBuf.indexOf('\n')) !== -1) {
+    const line = BLE[side].rxBuf.slice(0, idx + 1).trim();
+    BLE[side].rxBuf = BLE[side].rxBuf.slice(idx + 1);
+    if (line.startsWith(':')) parseReply(side, line);
+  }
+}
+function parseReply(side, pkt) {
+  // FC=0x41 回應確認
+  if (pkt.length >= 5 && pkt.substr(3, 2) === '41') {
+    log(`[${side}] ✓ MDL ACK`, 'ok');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  差速計算
+// ═══════════════════════════════════════════════════
+function calcTargets() {
+  const fwd  = parseInt(document.getElementById('fwdSpeed').value);
+  const rev  = parseInt(document.getElementById('revSpeed').value);
+  const sens = parseInt(document.getElementById('steerSens').value) / 100;
+  const dead = parseInt(document.getElementById('deadband').value);
+
+  // 上=前進(joyY<0→fwdPct>0), 右=右轉(joyX>0)
+  const fwdPct  = -joyY;
+  const turnPct = joyX * sens;
+
+  const spd  = fwdPct >= 0 ? fwd : rev;
+  const base = fwdPct * spd;
+
+  let Lrpm =  base + turnPct * fwd;
+  let Rrpm = -base + turnPct * fwd;   // 右輪反裝：前進用CCW
+
+  const lim = Math.max(fwd, rev);
+  Lrpm = Math.round(clamp(Lrpm, -lim, lim));
+  Rrpm = Math.round(clamp(Rrpm, -lim, lim));
+
+  // 若設定不反轉
+  if (document.getElementById('rightReverse').value === '0') {
+    Rrpm = -Rrpm;
+  }
+
+  // 死區處理
+  if (Math.abs(Lrpm) < dead) Lrpm = 0;
+  if (Math.abs(Rrpm) < dead) Rrpm = 0;
+
+  return { L: Lrpm, R: Rrpm };
+}
+
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ═══════════════════════════════════════════════════
+//  RPM → CMD 轉換
+//  正數=JGF(CW), 負數=JGR(CCW), 0=IStop
+// ═══════════════════════════════════════════════════
+function rpmToMDL(rpm) {
+  if (rpm === 0)  return { cmd: MDL_CMD.ISTOP, rpm: 0 };
+  if (rpm > 0)    return { cmd: MDL_CMD.JGF,   rpm: rpm };
+  return              { cmd: MDL_CMD.JGR,   rpm: -rpm };
+}
+
+// ═══════════════════════════════════════════════════
+//  週期發送（同一 frame 傳給兩個 BLE）
+// ═══════════════════════════════════════════════════
+function startSendLoop() {
+  if (sendTimer) return;
+  const interval = parseInt(document.getElementById('txInterval').value) || 100;
+  sendTimer = setInterval(async () => {
+    if (!running) return;
+
+    const tgt  = calcTargets();
+    const subL = parseInt(document.getElementById('subIdL').value) || 1;
+    const subR = parseInt(document.getElementById('subIdR').value) || 2;
+    const mL   = rpmToMDL(tgt.L);
+    const mR   = rpmToMDL(tgt.R);
+
+    // 建構包含左右輪的完整 MDL 廣播 frame
+    const frame = buildMDLFrame([
+      { subID: subL, cmd: mL.cmd, rpm: mL.rpm },
+      { subID: subR, cmd: mR.cmd, rpm: mR.rpm }
+    ]);
+
+    // 傳給兩個 BLE 模組（各自的馬達會響應自己的 SubID）
+    await enqueueTx('L', frame);
+    await enqueueTx('R', frame);
+
+    // 更新儀表
+    updateGauge('L', tgt.L);
+    updateGauge('R', tgt.R);
+  }, interval);
+}
+
+function stopSendLoop() { clearInterval(sendTimer); sendTimer = null; }
+
+// ═══════════════════════════════════════════════════
+//  全車啟動 / 緊急煞車
+// ═══════════════════════════════════════════════════
+async function startAll() {
+  running = true;
+  startSendLoop();
+  document.getElementById('eOverlay').style.display = 'none';
+  log('全車啟動 — MDL 搖桿生效', 'ok');
+}
+
+async function emergencyStop() {
+  running = false;
+  stopSendLoop();
+  joyX = 0; joyY = 0;
+
+  // 立即送 IStop 給兩輪
+  const subL = parseInt(document.getElementById('subIdL').value) || 1;
+  const subR = parseInt(document.getElementById('subIdR').value) || 2;
+  const stopFrame = buildMDLFrame([
+    { subID: subL, cmd: MDL_CMD.ISTOP, rpm: 0 },
+    { subID: subR, cmd: MDL_CMD.ISTOP, rpm: 0 }
+  ]);
+  await enqueueTx('L', stopFrame);
+  await enqueueTx('R', stopFrame);
+
+  updateGauge('L', 0); updateGauge('R', 0);
+  drawJoystick(); updateJoyVals();
+
+  const ov = document.getElementById('eOverlay');
+  ov.style.display = 'block';
+  setTimeout(() => { ov.style.display = 'none'; }, 2000);
+  log('緊急煞車！IStop 已送出', 'err');
+}
+
+// ═══════════════════════════════════════════════════
+//  搖桿繪製
+// ═══════════════════════════════════════════════════
+const jCanvas = document.getElementById('jCanvas');
+const jCtx    = jCanvas.getContext('2d');
+const CX = jCanvas.width / 2, CY = jCanvas.height / 2;
+const JOY_R = 95, KNOB_R = 28, DEAD_ZONE = 0.05;
+
+function drawJoystick() {
+  jCtx.clearRect(0, 0, jCanvas.width, jCanvas.height);
+
+  // 底盤
+  jCtx.beginPath(); jCtx.arc(CX, CY, JOY_R, 0, Math.PI*2);
+  jCtx.fillStyle = '#12202e'; jCtx.fill();
+  jCtx.strokeStyle = '#2a4060'; jCtx.lineWidth = 2; jCtx.stroke();
+
+  // 十字
+  jCtx.strokeStyle = '#1e3450'; jCtx.lineWidth = 1;
+  jCtx.beginPath(); jCtx.moveTo(CX-JOY_R+8,CY); jCtx.lineTo(CX+JOY_R-8,CY); jCtx.stroke();
+  jCtx.beginPath(); jCtx.moveTo(CX,CY-JOY_R+8); jCtx.lineTo(CX,CY+JOY_R-8); jCtx.stroke();
+
+  // 方向標籤
+  jCtx.font = '11px sans-serif'; jCtx.textAlign = 'center';
+  jCtx.textBaseline = 'middle'; jCtx.fillStyle = '#1e3a50';
+  jCtx.fillText('▲ 前進', CX, CY-JOY_R+14);
+  jCtx.fillText('▼ 後退', CX, CY+JOY_R-10);
+  jCtx.fillText('◀ 左', CX-JOY_R+16, CY);
+  jCtx.fillText('右 ▶', CX+JOY_R-16, CY);
+
+  // 手柄光暈
+  const kx = CX + joyX * JOY_R, ky = CY + joyY * JOY_R;
+  const grd = jCtx.createRadialGradient(kx,ky,2,kx,ky,KNOB_R+12);
+  grd.addColorStop(0,'rgba(0,229,255,0.28)');
+  grd.addColorStop(1,'rgba(0,229,255,0)');
+  jCtx.beginPath(); jCtx.arc(kx,ky,KNOB_R+12,0,Math.PI*2);
+  jCtx.fillStyle = grd; jCtx.fill();
+
+  // 手柄
+  const kg = jCtx.createRadialGradient(kx-5,ky-5,2,kx,ky,KNOB_R);
+  kg.addColorStop(0,'#40e0d0'); kg.addColorStop(1,'#007a70');
+  jCtx.beginPath(); jCtx.arc(kx,ky,KNOB_R,0,Math.PI*2);
+  jCtx.fillStyle = kg; jCtx.fill();
+  jCtx.strokeStyle = '#00e5ff'; jCtx.lineWidth = 2; jCtx.stroke();
+}
+
+function updateJoyVals() {
+  const tp = Math.round(-joyY * 100);
+  const sp = Math.round(joyX  * 100);
+  const tv = document.getElementById('jvT');
+  const sv = document.getElementById('jvS');
+  const da = document.getElementById('dirArrow');
+  tv.textContent = (tp>=0?'+':'')+tp; tv.className = tp<0?'neg':'';
+  sv.textContent = (sp>=0?'+':'')+sp; sv.className = sp<0?'neg':'';
+  if (Math.abs(tp)<5 && Math.abs(sp)<5) da.textContent='•';
+  else if (Math.abs(tp)>=Math.abs(sp)) da.textContent = tp>=0?'▲':'▼';
+  else da.textContent = sp>=0?'▶':'◀';
+  da.style.color = (tp<0||sp<0)?'#ff7043':(tp>0||sp>0)?'#00e5ff':'#8ba0b8';
+}
+
+// ─── 事件 ───
+function getPos(e) {
+  const r = jCanvas.getBoundingClientRect();
+  const s = e.touches ? e.touches[0] : e;
+  return [s.clientX-r.left, s.clientY-r.top];
+}
+function applyPos(px, py) {
+  let dx=(px-CX)/JOY_R, dy=(py-CY)/JOY_R;
+  const d=Math.sqrt(dx*dx+dy*dy);
+  if(d>1){dx/=d;dy/=d;}
+  if(Math.abs(dx)<DEAD_ZONE)dx=0;
+  if(Math.abs(dy)<DEAD_ZONE)dy=0;
+  joyX=dx;joyY=dy;
+  drawJoystick();updateJoyVals();
+}
+let drag=false;
+jCanvas.addEventListener('mousedown', e=>{drag=true;applyPos(...getPos(e));});
+jCanvas.addEventListener('mousemove', e=>{if(drag)applyPos(...getPos(e));});
+window.addEventListener('mouseup', ()=>{if(drag){drag=false;snapBack();}});
+jCanvas.addEventListener('touchstart',e=>{e.preventDefault();drag=true;applyPos(...getPos(e));},{passive:false});
+jCanvas.addEventListener('touchmove', e=>{e.preventDefault();if(drag)applyPos(...getPos(e));},{passive:false});
+jCanvas.addEventListener('touchend',  e=>{e.preventDefault();drag=false;snapBack();},{passive:false});
+
+function snapBack() {
+  const sx=joyX,sy=joyY,steps=8;let i=0;
+  const id=setInterval(()=>{
+    i++;joyX=sx*(1-i/steps);joyY=sy*(1-i/steps);
+    drawJoystick();updateJoyVals();
+    if(i>=steps){joyX=0;joyY=0;drawJoystick();updateJoyVals();clearInterval(id);}
+  },16);
+}
+
+// ═══════════════════════════════════════════════════
+//  RPM 儀表（水平 bar）
+// ═══════════════════════════════════════════════════
+function updateGauge(side, rpm) {
+  const fwd = parseInt(document.getElementById('fwdSpeed').value)||500;
+  const rev = parseInt(document.getElementById('revSpeed').value)||300;
+  const lim = Math.max(fwd,rev);
+  const can = document.getElementById(`g${side}`);
+  const ctx = can.getContext('2d');
+  const W=can.width,H=can.height,MID=W/2;
+  ctx.clearRect(0,0,W,H);
+  const color = rpm<0?'#ff7043':rpm>0?'#00e5ff':'#2a4060';
+  ctx.fillStyle='#1a2535';ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#263040';ctx.fillRect(0,H/2-3,W,6);
+  const bw=Math.min(Math.abs(rpm)/lim,1)*MID;
+  if(rpm>0){ctx.fillStyle=color;ctx.fillRect(MID,H/2-10,bw,20);}
+  else if(rpm<0){ctx.fillStyle=color;ctx.fillRect(MID-bw,H/2-10,bw,20);}
+  ctx.beginPath();ctx.arc(MID,H/2,4,0,Math.PI*2);ctx.fillStyle='#8ba0b8';ctx.fill();
+  document.getElementById(`val${side}`).textContent=Math.abs(rpm);
+  document.getElementById(`val${side}`).style.color=color;
+  const de=document.getElementById(`dir${side}`);
+  if(rpm===0){de.textContent='STOP(IStop)';de.style.background='#1a2535';de.style.color='#4a6080';}
+  else if(rpm>0){de.textContent='▶ JGF(CW)';de.style.background='#0a2030';de.style.color='#00e5ff';}
+  else{de.textContent='◀ JGR(CCW)';de.style.background='#2a1510';de.style.color='#ff7043';}
+}
+
+// ═══════════════════════════════════════════════════
+//  UI 工具
+// ═══════════════════════════════════════════════════
+function setBadge(side,text,cls){
+  const el=document.getElementById(`badge${side}`);
+  el.textContent=text;el.className='badge '+cls;
+}
+function setBtns(side,conn){
+  document.getElementById(`btn${side}`).disabled   = conn;
+  document.getElementById(`btn${side}dc`).disabled = !conn;
+}
+function updateSubLabels(){
+  document.getElementById('lblSubL').textContent = document.getElementById('subIdL').value;
+  document.getElementById('lblSubR').textContent = document.getElementById('subIdR').value;
+}
+document.getElementById('subIdL').addEventListener('change', updateSubLabels);
+document.getElementById('subIdR').addEventListener('change', updateSubLabels);
+
+// ═══════════════════════════════════════════════════
+//  Init
+// ═══════════════════════════════════════════════════
+drawJoystick();
+updateGauge('L', 0);
+updateGauge('R', 0);
+
+// 測試用：log 範例 frame
+const exFrame = buildMDLFrame([{subID:1,cmd:1,rpm:500},{subID:2,cmd:2,rpm:500}]);
+log(`範例 Frame: ${exFrame.trim()}`, 'tx');
+</script>
+</body>
+</html>
