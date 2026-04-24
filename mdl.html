@@ -330,15 +330,20 @@ async function processQueue(side) {
     const bytes = new TextEncoder().encode(frame);
     try {
       for (let i = 0; i < bytes.length; i += 20) {
-        await b.txChar.writeValueWithResponse(bytes.slice(i, i + 20));
-        if (bytes.length > 20) await sleep(30);
+        const chunk = bytes.slice(i, i + 20);
+        // HM-10/LTC8117 通常只支援 writeValueWithoutResponse
+        if (b.txChar.properties.writeWithoutResponse) {
+          await b.txChar.writeValueWithoutResponse(chunk);
+        } else {
+          await b.txChar.writeValueWithResponse(chunk);
+        }
+        if (bytes.length > 20) await sleep(20);
       }
-      // 顯示最新傳送的 frame
       document.getElementById(`frame${side}`).textContent = frame.trim();
     } catch(e) {
       log(`[${side}] TX: ${e.message}`, 'err');
     }
-    await sleep(40);
+    await sleep(30);
   }
   b.busy = false;
 }
