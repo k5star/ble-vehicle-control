@@ -313,10 +313,13 @@
 
   <!-- 常用修正快捷 -->
   <div style="margin-top:10px;border-top:1px solid #2a1a0a;padding-top:8px;">
-    <div style="font-size:.7rem;color:var(--muted);margin-bottom:6px;">⚡ 警報清除</div>
+    <div style="font-size:.7rem;color:var(--muted);margin-bottom:4px;">⚡ 警報清除</div>
+    <div style="font-size:.63rem;color:#805030;margin-bottom:6px;line-height:1.5;">
+      400h=通訊逾時，需先持續送封包喚醒驅動器，再清除警報（約3秒）
+    </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
       <button class="btn btn-red" style="flex:1;padding:10px 0;font-size:.82rem;font-weight:700;" onclick="clearAlarm()">
-        🔔 清除警報（兩輪）
+        🔔 通訊喚醒＋清除警報（兩輪）
       </button>
       <button class="btn" style="flex:1;padding:10px 0;font-size:.82rem;background:#7b1fa2;color:#fff;" onclick="clearAlarmSide()">
         🔔 清除警報（選擇輪）
@@ -855,15 +858,41 @@ function updateMotorStatus(side, regs, rawPkt) {
   h('volt').textContent   = `${voltRaw} V`;
   h('freq').textContent   = `${(freqRaw*0.01).toFixed(2)} Hz`;
 
+  const ALARM_DESC = {
+    0x0000: '正常',
+    0x0001: '過電流（加速中）',
+    0x0002: '過電流（減速中）',
+    0x0004: '過電流（定速中）',
+    0x0008: '接地故障',
+    0x0010: '過電壓',
+    0x0020: '低電壓',
+    0x0040: '過熱',
+    0x0080: '過負載',
+    0x0100: '驅動器過載',
+    0x0200: '外部故障',
+    0x0400: '通訊逾時（RS485斷線）',
+    0x0800: '硬體故障',
+    0x1000: 'EEPROM故障',
+    0x2000: '編碼器錯誤',
+    0x4000: '過速度',
+    0x8000: '輸入缺相',
+    0x0900: '通訊逾時+其他',
+  };
+  const alarmDesc = ALARM_DESC[alarmCode] || `未知警報碼`;
+
   if (alarmCode === 0) {
-    h('alarm').textContent = 'OK';
+    h('alarm').textContent = '✓ 正常';
     h('alarm').className   = 's-val run';
   } else {
-    h('alarm').textContent = `ERR ${alarmCode.toString(16).toUpperCase()}h`;
+    h('alarm').textContent = `${alarmCode.toString(16).toUpperCase()}h ${alarmDesc}`;
     h('alarm').className   = 's-val fault';
     if (!W[side]._lastAlarm || W[side]._lastAlarm !== alarmCode) {
-      log(`[${side}] ⚠ 警報: ${alarmCode.toString(16).toUpperCase()}h`, 'err');
+      log(`[${side}] ⚠ 警報 ${alarmCode.toString(16).toUpperCase()}h: ${alarmDesc}`, 'err');
       W[side]._lastAlarm = alarmCode;
+      // 400h = 通訊逾時，自動嘗試持續送封包喚醒
+      if (alarmCode === 0x0400 || alarmCode === 0x0900) {
+        log(`[${side}] 💡 通訊逾時警報：請按「通訊喚醒+清除」按鈕`, 'err');
+      }
     }
   }
 
@@ -888,18 +917,26 @@ async function clearAlarmSide() {
 }
 async function _doAlarmClear(side) {
   const nid = getNodeId(side);
-  // 先送 STOP
+  log(`[${side}] 開始通訊喚醒流程（400h=通訊逾時需持續送封包）`, 'tx');
+
+  // 步驟1: 持續送 STOP 封包讓驅動器重新確認通訊正常（10次，每100ms）
+  for (let i = 0; i < 10; i++) {
+    await enqueueTx(side, mbFC06(nid, 0x1400, 0));
+    await sleep(120);
+  }
+  log(`[${side}] 通訊喚醒封包已送出，嘗試清除警報…`, 'ok');
+
+  // 步驟2: 警報復歸 — 多種方式都試
+  await enqueueTx(side, mbFC06(nid, 0x2501, 1));  // 2501h=1 警報復歸
+  await sleep(200);
+  await enqueueTx(side, mbFC06(nid, 0x1400, 7));  // 1400h=7 RESET CMD
+  await sleep(200);
+  await enqueueTx(side, mbFC06(nid, 0x2100, 1));  // 2100h=1 備用警報清除
+  await sleep(200);
+
+  // 步驟3: 收尾送 STOP
   await enqueueTx(side, mbFC06(nid, 0x1400, 0));
-  await sleep(100);
-  // 警報復歸：2501h=1 (常見 A/E 系列)
-  await enqueueTx(side, mbFC06(nid, 0x2501, 1));
-  await sleep(100);
-  // 備用：1400h=7 (RESET CMD)
-  await enqueueTx(side, mbFC06(nid, 0x1400, 7));
-  await sleep(100);
-  // 清除後送 STOP 確保靜止
-  await enqueueTx(side, mbFC06(nid, 0x1400, 0));
-  log(`[${side}] 警報清除指令已送出`, 'ok');
+  log(`[${side}] ✓ 警報清除流程完成，請觀察警報狀態`, 'ok');
 }
 
 // ═══════════════════════════════════════════════════
