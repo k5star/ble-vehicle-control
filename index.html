@@ -313,6 +313,23 @@
 
   <!-- 常用修正快捷 -->
   <div style="margin-top:10px;border-top:1px solid #2a1a0a;padding-top:8px;">
+    <!-- 比對並同步 -->
+    <div style="font-size:.7rem;color:var(--muted);margin-bottom:4px;">🔁 左右輪參數同步</div>
+    <div style="font-size:.63rem;color:#305050;margin-bottom:6px;line-height:1.5;">
+      掃描兩輪後，自動找出差異並將左輪設定寫入右輪
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <button class="btn btn-teal" style="flex:1;padding:10px 0;font-size:.78rem;" onclick="scanBothAndCompare()">
+        🔍 掃描兩輪並比對
+      </button>
+      <button class="btn btn-green" style="flex:1;padding:10px 0;font-size:.78rem;" onclick="syncRfromL()">
+        ➡ 同步右輪＝左輪
+      </button>
+    </div>
+    <div id="compareResult" style="background:#070f18;border-radius:8px;padding:8px;font-size:.65rem;
+         font-family:monospace;color:#4a7090;min-height:40px;max-height:160px;overflow-y:auto;
+         line-height:1.8;margin-bottom:10px;display:none;"></div>
+
     <div style="font-size:.7rem;color:var(--muted);margin-bottom:4px;">⚡ 警報清除</div>
     <div style="font-size:.63rem;color:#805030;margin-bottom:6px;line-height:1.5;">
       400h=通訊逾時，需先持續送封包喚醒驅動器，再清除警報（約3秒）
@@ -808,12 +825,15 @@ function parseReply(side, pkt) {
     if (regs.length >= 6 && W[side]._lastFC03Addr === 0x4600) {
       updateMotorStatus(side, regs, pkt);
     } else {
-      // 參數掃描回應 — 存入 scanData
+      // 參數掃描回應 — 存入 scanData 及對應輪的 scanDataL/R
       const startAddr = W[side]._lastFC03Addr || 0;
+      const targetMap = W[side]._scanTarget || scanData;
       regs.forEach((v, i) => {
         const a = (startAddr + i).toString(16).toUpperCase().padStart(4,'0');
         scanData[a] = v;
+        targetMap[a] = v;
       });
+      W[side]._scanTarget = null;
       const grp = (startAddr >> 8);
       renderScanResult(grp);
       log(`[掃描][${side}] 收到 ${regs.length} 筆參數`, 'ok');
@@ -899,6 +919,88 @@ function updateMotorStatus(side, regs, rawPkt) {
   // Raw hex 顯示
   document.getElementById(`s${side}_raw`).textContent =
     regs.map((r,i) => `${(0x4600+i).toString(16).toUpperCase()}h:${r.toString(16).toUpperCase().padStart(4,'0')}`).join('  ');
+}
+
+// ═══════════════════════════════════════════════════
+//  左右輪參數比對與同步
+// ═══════════════════════════════════════════════════
+const scanDataL = {};  // 左輪掃描結果
+const scanDataR = {};  // 右輪掃描結果
+
+async function scanBothAndCompare() {
+  if (!W.L.txChar && !W.R.txChar) { log('請先連接 BLE', 'err'); return; }
+  const el = document.getElementById('compareResult');
+  el.style.display = 'block';
+  el.innerHTML = '<span style="color:#406080">掃描中…</span>';
+
+  // 掃描左輪
+  if (W.L.txChar) {
+    W.L._scanTarget = scanDataL;
+    W.L._lastFC03Addr = 0x0200;
+    await enqueueTx('L', mbFC03(getNodeId('L'), 0x0200, 16));
+    await sleep(1500);
+  }
+  // 掃描右輪
+  if (W.R.txChar) {
+    W.R._scanTarget = scanDataR;
+    W.R._lastFC03Addr = 0x0200;
+    await enqueueTx('R', mbFC03(getNodeId('R'), 0x0200, 16));
+    await sleep(1500);
+  }
+
+  renderCompare();
+}
+
+function renderCompare() {
+  const el = document.getElementById('compareResult');
+  const paramNames = {
+    '0200':'02-00 控制模式', '0201':'02-01 速度模式', '0202':'02-02 停止方式',
+    '0203':'02-03 運轉來源', '0204':'02-04 速度來源', '0205':'02-05 多功能',
+    '0206':'02-06 加速時間', '0207':'02-07 減速時間', '0208':'02-08 S曲線',
+    '0209':'02-09', '020A':'02-10 多機模式', '020B':'02-11',
+    '020C':'02-12', '020D':'02-13', '020E':'02-14', '020F':'02-15',
+  };
+  let html = '<div style="color:#4dd0c4;margin-bottom:4px;">— 左右輪參數比對 —</div>';
+  let diffCount = 0;
+  for (let i = 0; i < 16; i++) {
+    const addr = (0x0200 + i).toString(16).toUpperCase().padStart(4,'0');
+    const lVal = scanDataL[addr];
+    const rVal = scanDataR[addr];
+    const name = paramNames[addr] || addr + 'h';
+    const lStr = lVal !== undefined ? lVal : '?';
+    const rStr = rVal !== undefined ? rVal : '?';
+    const diff = lVal !== undefined && rVal !== undefined && lVal !== rVal;
+    if (diff) diffCount++;
+    html += `<div style="display:flex;justify-content:space-between;${diff?'background:#2a1010;border-radius:4px;padding:0 4px;':''}">
+      <span style="color:${diff?'#ff7043':'#3a6080'}">${name}</span>
+      <span>左:<span style="color:#00e5ff">${lStr}</span> 右:<span style="color:${diff?'#ff7043':'#00e5ff'}">${rStr}</span>${diff?' ⚠️':''}</span>
+    </div>`;
+  }
+  html += `<div style="color:${diffCount?'#ff7043':'#66bb6a'};margin-top:4px;">共 ${diffCount} 個差異</div>`;
+  el.innerHTML = html;
+  if (diffCount > 0) log(`比對完成：${diffCount} 個參數不同，可按「同步右輪＝左輪」修正`, 'err');
+  else log('比對完成：左右輪參數一致', 'ok');
+}
+
+async function syncRfromL() {
+  if (!W.R.txChar) { log('請先連接右輪 BLE', 'err'); return; }
+  if (Object.keys(scanDataL).length === 0) {
+    log('請先執行「掃描兩輪並比對」', 'err'); return;
+  }
+  const nid = getNodeId('R');
+  let count = 0;
+  for (let i = 0; i < 16; i++) {
+    const addr = (0x0200 + i).toString(16).toUpperCase().padStart(4,'0');
+    const lVal = scanDataL[addr];
+    const rVal = scanDataR[addr];
+    if (lVal !== undefined && lVal !== rVal) {
+      await enqueueTx('R', mbFC06(nid, 0x0200 + i, lVal));
+      await sleep(150);
+      log(`[R] 同步 ${addr}h = ${lVal}`, 'tx');
+      count++;
+    }
+  }
+  log(`✓ 同步完成，共寫入 ${count} 個參數`, 'ok');
 }
 
 // ═══════════════════════════════════════════════════
