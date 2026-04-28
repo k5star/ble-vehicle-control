@@ -888,7 +888,7 @@ const scanData = {};
 async function scanParams() {
   const side = document.getElementById('scanSide').value;
   if (!W[side].txChar) { log('請先連接 BLE', 'err'); return; }
-  const grp = parseInt(document.getElementById('scanGroup').value || '02', 16);
+  const grp = parseInt(document.getElementById('scanGroup').value || '02', 10);
   const startAddr = (grp << 8);
   const nid = getNodeId(side);
 
@@ -925,13 +925,18 @@ function renderScanResult(grp) {
   el.innerHTML = html || '<span style="color:#4a3020">未收到回應，請確認 BLE 連線</span>';
 }
 
+// group/num 皆為十進位字串，例如 '02','10' → 地址 0x020A
+function paramAddr(grp, num) {
+  return (parseInt(grp, 10) << 8) | parseInt(num, 10);
+}
+
 function writeParam() {
   const side = document.getElementById('scanSide').value;
   if (!W[side].txChar) { log('請先連接 BLE', 'err'); return; }
   const grp = document.getElementById('writeGroup').value.trim();
   const num = document.getElementById('writeNum').value.trim();
   const val = parseInt(document.getElementById('writeVal').value) || 0;
-  const addr = parseInt(grp + num.padStart(2,'0'), 16);
+  const addr = paramAddr(grp, num);
   const nid = getNodeId(side);
   const frame = mbFC06(nid, addr, val);
   document.getElementById('writeCalc').textContent =
@@ -946,7 +951,7 @@ async function quickWrite(grp, num, val) {
   document.getElementById('writeGroup').value = grp;
   document.getElementById('writeNum').value = num;
   document.getElementById('writeVal').value = val;
-  const addr = parseInt(grp + num.padStart(2,'0'), 16);
+  const addr = paramAddr(grp, num);
   const nid = getNodeId(side);
   const frame = mbFC06(nid, addr, val);
   document.getElementById('writeCalc').textContent =
