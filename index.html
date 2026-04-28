@@ -267,6 +267,65 @@
   </div>
 </div>
 
+<!-- ═══ 參數掃描/修正工具 ═══ -->
+<div class="card" style="border:1px solid #4a2010;">
+  <div class="card-title">🛠 參數掃描與修正（燒錄回復用）</div>
+  <div style="font-size:.68rem;color:#e07040;margin-bottom:8px;line-height:1.6;">
+    ⚠ 先讀取目前參數值，確認哪個被誤改，再寫回正確值。
+  </div>
+
+  <!-- 掃描設定 -->
+  <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+    <select id="scanSide" style="background:#111c28;border:1px solid #2a3f58;color:var(--text);border-radius:6px;padding:4px 8px;font-size:.74rem;">
+      <option value="L">左輪</option>
+      <option value="R">右輪</option>
+    </select>
+    <span style="font-size:.72rem;color:var(--muted);">起始 Group</span>
+    <input id="scanGroup" value="02" maxlength="2"
+           style="width:40px;background:#111c28;border:1px solid #2a3f58;color:#40c4ff;border-radius:6px;padding:4px 6px;font-size:.74rem;font-family:monospace;">
+    <span style="font-size:.68rem;color:var(--muted);">- 00 ~ 15 共16筆</span>
+    <button class="btn btn-teal" style="padding:6px 16px;font-size:.74rem;" onclick="scanParams()">📖 讀取</button>
+  </div>
+
+  <!-- 掃描結果 -->
+  <div id="scanResult" style="background:#070f18;border-radius:8px;padding:8px;font-size:.65rem;
+       font-family:monospace;color:#4a7090;min-height:60px;max-height:200px;overflow-y:auto;line-height:1.8;">
+    尚未掃描
+  </div>
+
+  <!-- 單筆寫回 -->
+  <div style="margin-top:10px;border-top:1px solid #2a1a0a;padding-top:10px;">
+    <div style="font-size:.7rem;color:var(--muted);margin-bottom:6px;">寫回單一參數（確認後才按）</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <span style="font-size:.72rem;color:var(--muted);">Group</span>
+      <input id="writeGroup" value="02" maxlength="2"
+             style="width:36px;background:#111c28;border:1px solid #2a3f58;color:#40c4ff;border-radius:6px;padding:4px 6px;font-size:.74rem;font-family:monospace;">
+      <span style="font-size:.72rem;color:var(--muted);">-</span>
+      <input id="writeNum" value="02" maxlength="2"
+             style="width:36px;background:#111c28;border:1px solid #2a3f58;color:#40c4ff;border-radius:6px;padding:4px 6px;font-size:.74rem;font-family:monospace;">
+      <span style="font-size:.72rem;color:var(--muted);">值</span>
+      <input id="writeVal" value="0" type="number"
+             style="width:70px;background:#111c28;border:1px solid #2a3f58;color:var(--text);border-radius:6px;padding:4px 6px;font-size:.74rem;">
+      <button class="btn btn-red" style="padding:6px 14px;font-size:.74rem;" onclick="writeParam()">✏️ 寫入</button>
+    </div>
+    <div id="writeCalc" style="margin-top:4px;font-size:.63rem;font-family:monospace;color:#3a6080;"></div>
+  </div>
+
+  <!-- 常用修正快捷 -->
+  <div style="margin-top:10px;border-top:1px solid #2a1a0a;padding-top:8px;">
+    <div style="font-size:.7rem;color:var(--muted);margin-bottom:6px;">常用修正（依據驅動器手冊）</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','02',1)">02-02=1<br><span style="font-size:.6rem;">停止:減速</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','02',0)">02-02=0<br><span style="font-size:.6rem;">停止:自由</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','03',0)">02-03=0<br><span style="font-size:.6rem;">NET控制</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','03',1)">02-03=1<br><span style="font-size:.6rem;">IO控制</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','04',3)">02-04=3<br><span style="font-size:.6rem;">速度:Modbus</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','04',0)">02-04=0<br><span style="font-size:.6rem;">速度:面板</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','09',0)">02-09=0<br><span style="font-size:.6rem;">還原</span></button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ 初始化模式（寫入參數）═══ -->
 <div class="card" style="margin-bottom:10px;border:1px solid #1a4060;">
   <div class="card-title">⚙ 初始化馬達模式（連線後先按）</div>
@@ -603,6 +662,10 @@ function log(msg, cls='') {
 async function enqueueTx(side, frame) {
   const w = W[side];
   if (!w.txChar) return;
+  // FC03: 記錄起始地址以區分回應類型
+  if (frame[3] === '0' && frame[4] === '3') {
+    w._lastFC03Addr = parseInt(frame.substr(5, 4), 16);
+  }
   w.queue.push(frame);
   if (!w.busy) processQueue(side);
 }
@@ -726,7 +789,20 @@ function parseReply(side, pkt) {
     for (let i = 0; i < numRegs; i++) {
       regs.push(parseInt(pkt.substr(7 + i * 4, 4), 16));
     }
-    if (regs.length >= 6) updateMotorStatus(side, regs, pkt);
+    // 判斷是狀態讀取(4600h~)還是參數掃描
+    if (regs.length >= 6 && W[side]._lastFC03Addr === 0x4600) {
+      updateMotorStatus(side, regs, pkt);
+    } else {
+      // 參數掃描回應 — 存入 scanData
+      const startAddr = W[side]._lastFC03Addr || 0;
+      regs.forEach((v, i) => {
+        const a = (startAddr + i).toString(16).toUpperCase().padStart(4,'0');
+        scanData[a] = v;
+      });
+      const grp = (startAddr >> 8);
+      renderScanResult(grp);
+      log(`[掃描][${side}] 收到 ${regs.length} 筆參數`, 'ok');
+    }
 
   } else if (fc === '83' || fc === '86' || fc === '90') {
     // Exception response
@@ -782,6 +858,101 @@ function updateMotorStatus(side, regs, rawPkt) {
   // Raw hex 顯示
   document.getElementById(`s${side}_raw`).textContent =
     regs.map((r,i) => `${(0x4600+i).toString(16).toUpperCase()}h:${r.toString(16).toUpperCase().padStart(4,'0')}`).join('  ');
+}
+
+// ═══════════════════════════════════════════════════
+//  參數掃描工具
+// ═══════════════════════════════════════════════════
+const PARAM_DESC = {
+  '0200':'02-00 馬達控制模式',
+  '0201':'02-01 速度控制模式',
+  '0202':'02-02 停止方式 (0=自由,1=減速)',
+  '0203':'02-03 運轉來源 (0=NET,1=IO)',
+  '0204':'02-04 速度來源 (0=面板,3=Modbus)',
+  '0205':'02-05 多功能端子',
+  '0206':'02-06 加速時間',
+  '0207':'02-07 減速時間',
+  '0208':'02-08 S曲線',
+  '0209':'02-09 (誤寫過=0)',
+  '020A':'02-10 多機模式 (0=Single,3=MDL)',
+  '020B':'02-11',
+  '020C':'02-12',
+  '020D':'02-13',
+  '020E':'02-14',
+  '020F':'02-15',
+};
+
+// 掃描結果儲存
+const scanData = {};
+
+async function scanParams() {
+  const side = document.getElementById('scanSide').value;
+  if (!W[side].txChar) { log('請先連接 BLE', 'err'); return; }
+  const grp = parseInt(document.getElementById('scanGroup').value || '02', 16);
+  const startAddr = (grp << 8);
+  const nid = getNodeId(side);
+
+  document.getElementById('scanResult').innerHTML = '<span style="color:#406080">讀取中…</span>';
+  log(`[掃描] 讀取 ${grp.toString(16).toUpperCase().padStart(2,'0')}-00 ~ 15`, 'tx');
+
+  // 一次讀 16 筆
+  W[side]._scanBuf = {};
+  await enqueueTx(side, mbFC03(nid, startAddr, 16));
+  // 等待回應（2秒）
+  await sleep(2000);
+  renderScanResult(grp);
+}
+
+function renderScanResult(grp) {
+  const el = document.getElementById('scanResult');
+  const g = grp.toString(16).toUpperCase().padStart(2,'0');
+  let html = '';
+  for (let i = 0; i < 16; i++) {
+    const addr = (grp << 8) | i;
+    const addrHex = addr.toString(16).toUpperCase().padStart(4,'0');
+    const key = addrHex;
+    const val = scanData[key];
+    const desc = PARAM_DESC[addrHex] || `${g}-${i.toString().padStart(2,'0')}`;
+    const warn = (addrHex === '0202' || addrHex === '0209') ? ' ⚠️誤寫過' : '';
+    const valStr = val !== undefined
+      ? `<span style="color:#00e5ff;font-weight:700">${val}</span>`
+      : '<span style="color:#2a4060">未收到</span>';
+    html += `<div style="display:flex;justify-content:space-between;padding:1px 0;">
+      <span style="color:#3a6080">${addrHex}h (${desc})${warn}</span>
+      <span>${valStr}</span>
+    </div>`;
+  }
+  el.innerHTML = html || '<span style="color:#4a3020">未收到回應，請確認 BLE 連線</span>';
+}
+
+function writeParam() {
+  const side = document.getElementById('scanSide').value;
+  if (!W[side].txChar) { log('請先連接 BLE', 'err'); return; }
+  const grp = document.getElementById('writeGroup').value.trim();
+  const num = document.getElementById('writeNum').value.trim();
+  const val = parseInt(document.getElementById('writeVal').value) || 0;
+  const addr = parseInt(grp + num.padStart(2,'0'), 16);
+  const nid = getNodeId(side);
+  const frame = mbFC06(nid, addr, val);
+  document.getElementById('writeCalc').textContent =
+    `TX: ${frame.trim()} → ${grp}-${num}(${addr.toString(16).toUpperCase()}h) = ${val}`;
+  log(`[修正][${side}] ${grp}-${num}(${addr.toString(16).toUpperCase()}h) = ${val}`, 'tx');
+  enqueueTx(side, frame);
+}
+
+async function quickWrite(grp, num, val) {
+  const side = document.getElementById('scanSide').value;
+  if (!W[side].txChar) { log('請先連接 BLE', 'err'); return; }
+  document.getElementById('writeGroup').value = grp;
+  document.getElementById('writeNum').value = num;
+  document.getElementById('writeVal').value = val;
+  const addr = parseInt(grp + num.padStart(2,'0'), 16);
+  const nid = getNodeId(side);
+  const frame = mbFC06(nid, addr, val);
+  document.getElementById('writeCalc').textContent =
+    `TX: ${frame.trim()} → ${grp}-${num}(${addr.toString(16).toUpperCase()}h) = ${val}`;
+  log(`[快捷][${side}] ${grp}-${num}(${addr.toString(16).toUpperCase()}h) = ${val}`, 'tx');
+  await enqueueTx(side, frame);
 }
 
 // ═══════════════════════════════════════════════════
@@ -865,7 +1036,7 @@ async function doPoll() {
   for (const s of sides) {
     if (!W[s].txChar) continue;
     const nid = getNodeId(s);
-    // 讀 4600h ~ 4607h (8 個暫存器)
+    W[s]._lastFC03Addr = 0x4600; // 標記為狀態讀取
     await enqueueTx(s, mbFC03(nid, 0x4600, 8));
     await sleep(50);
   }
