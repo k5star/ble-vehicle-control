@@ -313,6 +313,16 @@
 
   <!-- 常用修正快捷 -->
   <div style="margin-top:10px;border-top:1px solid #2a1a0a;padding-top:8px;">
+    <div style="font-size:.7rem;color:var(--muted);margin-bottom:6px;">⚡ 警報清除</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+      <button class="btn btn-red" style="flex:1;padding:10px 0;font-size:.82rem;font-weight:700;" onclick="clearAlarm()">
+        🔔 清除警報（兩輪）
+      </button>
+      <button class="btn" style="flex:1;padding:10px 0;font-size:.82rem;background:#7b1fa2;color:#fff;" onclick="clearAlarmSide()">
+        🔔 清除警報（選擇輪）
+      </button>
+    </div>
+
     <div style="font-size:.7rem;color:var(--muted);margin-bottom:6px;">常用修正（依據驅動器手冊）</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;">
       <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','02',1)">02-02=1<br><span style="font-size:.6rem;">停止:減速</span></button>
@@ -321,7 +331,9 @@
       <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','03',1)">02-03=1<br><span style="font-size:.6rem;">IO控制</span></button>
       <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','04',3)">02-04=3<br><span style="font-size:.6rem;">速度:Modbus</span></button>
       <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','04',0)">02-04=0<br><span style="font-size:.6rem;">速度:面板</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','07',85)">02-07=85<br><span style="font-size:.6rem;">減速時間</span></button>
       <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','09',0)">02-09=0<br><span style="font-size:.6rem;">還原</span></button>
+      <button class="btn btn-gray" style="padding:6px 10px;font-size:.68rem;" onclick="quickWrite('02','10',0)">02-10=0<br><span style="font-size:.6rem;">Single模式</span></button>
     </div>
   </div>
 </div>
@@ -858,6 +870,36 @@ function updateMotorStatus(side, regs, rawPkt) {
   // Raw hex 顯示
   document.getElementById(`s${side}_raw`).textContent =
     regs.map((r,i) => `${(0x4600+i).toString(16).toUpperCase()}h:${r.toString(16).toUpperCase().padStart(4,'0')}`).join('  ');
+}
+
+// ═══════════════════════════════════════════════════
+//  警報清除
+// ═══════════════════════════════════════════════════
+async function clearAlarm() {
+  for (const side of ['L','R']) {
+    if (!W[side].txChar) continue;
+    await _doAlarmClear(side);
+  }
+}
+async function clearAlarmSide() {
+  const side = document.getElementById('scanSide').value;
+  if (!W[side].txChar) { log('請先連接 BLE', 'err'); return; }
+  await _doAlarmClear(side);
+}
+async function _doAlarmClear(side) {
+  const nid = getNodeId(side);
+  // 先送 STOP
+  await enqueueTx(side, mbFC06(nid, 0x1400, 0));
+  await sleep(100);
+  // 警報復歸：2501h=1 (常見 A/E 系列)
+  await enqueueTx(side, mbFC06(nid, 0x2501, 1));
+  await sleep(100);
+  // 備用：1400h=7 (RESET CMD)
+  await enqueueTx(side, mbFC06(nid, 0x1400, 7));
+  await sleep(100);
+  // 清除後送 STOP 確保靜止
+  await enqueueTx(side, mbFC06(nid, 0x1400, 0));
+  log(`[${side}] 警報清除指令已送出`, 'ok');
 }
 
 // ═══════════════════════════════════════════════════
